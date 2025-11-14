@@ -7,6 +7,38 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model User {
+  id             String   @id @default(uuid())
+  fname          String
+  lname          String
+  username       String   @unique
+  email          String   @unique
+  organization   String 
+  passwordHash   String
+
+
+  city           String?
+  country        String?
+  timezone       String?
+  phone          String?
+
+  plan_in_date   DateTime?
+  plan_out_date  DateTime?
+
+  last_logged_in   DateTime?
+  last_forgot_pass DateTime?
+
+  pass_attempt   Int      @default(0)
+  blocked        Boolean  @default(false)
+  status         String   @default("active")
+
+  latest_txn_id  String?
+
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+}
+
+
 model Product {
   id        String   @id @default(uuid())
   name      String
