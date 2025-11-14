@@ -1,13 +1,41 @@
 import { useState, useEffect } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { X, Search, Plus, Trash2 } from 'lucide-react';
+import { X, Search, Plus, Trash2, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { mockCustomers, mockProducts } from '@/data/mockData';
+import { api } from '@/lib/api';
+
+interface BackendOrder {
+  id: string;
+  customerId: string | null;
+  total: number;
+  createdAt: string;
+  customer: {
+    id: string;
+    name: string;
+    phone?: string | null;
+    email?: string | null;
+  } | null;
+  items: Array<{
+    id: string;
+    orderId: string;
+    productId: string;
+    qty: number;
+    price: number;
+    product: {
+      id: string;
+      name: string;
+      price: number;
+      stock: number;
+    };
+  }>;
+}
 
 interface OrderFormProps {
+  order?: BackendOrder | null;
   onClose: () => void;
   onSuccess?: () => void;
 }
@@ -19,26 +47,110 @@ interface OrderItem {
   price: number;
 }
 
-const OrderForm = ({ onClose, onSuccess }: OrderFormProps) => {
+const OrderForm = ({ order, onClose, onSuccess }: OrderFormProps) => {
+  const queryClient = useQueryClient();
+  const isEditMode = !!order;
   const [phone, setPhone] = useState('');
+  const [customerName, setCustomerName] = useState('');
+  const [customerEmail, setCustomerEmail] = useState('');
   const [customer, setCustomer] = useState<any>(null);
   const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
   const [selectedProduct, setSelectedProduct] = useState('');
   const [quantity, setQuantity] = useState('1');
 
+  // Initialize form with order data if editing
   useEffect(() => {
-    if (phone.length === 10) {
-      // Mock customer lookup by phone
-      const foundCustomer = mockCustomers.find((c) => c.email.includes(phone.slice(0, 4)));
+    if (order) {
+      if (order.customer) {
+        setCustomer(order.customer);
+        setPhone(order.customer.phone || '');
+        setCustomerName(order.customer.name);
+        setCustomerEmail(order.customer.email || '');
+      }
+      // Convert order items to form format
+      const items: OrderItem[] = order.items.map((item) => ({
+        productId: item.productId,
+        productName: item.product.name,
+        quantity: item.qty,
+        price: item.price,
+      }));
+      setOrderItems(items);
+    }
+  }, [order]);
+
+  // Fetch products
+  const { data: products = [], isLoading: productsLoading } = useQuery({
+    queryKey: ['products'],
+    queryFn: api.products.getAll,
+  });
+
+  // Fetch customers to search
+  const { data: customers = [] } = useQuery({
+    queryKey: ['customers'],
+    queryFn: api.customers.getAll,
+  });
+
+  // Customer lookup by phone (only when not in edit mode or phone changes manually)
+  const [phoneManuallyChanged, setPhoneManuallyChanged] = useState(false);
+  
+  useEffect(() => {
+    if (!isEditMode && phone.length === 10 && phoneManuallyChanged) {
+      const foundCustomer = customers.find((c: any) => c.phone === phone);
       if (foundCustomer) {
         setCustomer(foundCustomer);
+        setCustomerName(foundCustomer.name);
+        setCustomerEmail(foundCustomer.email || '');
         toast.success(`Customer found: ${foundCustomer.name}`);
       } else {
         setCustomer(null);
-        toast.info('New customer - will be created with this order');
+        setCustomerName('');
+        setCustomerEmail('');
+        toast.info('New customer - please enter name');
       }
+    } else if (!isEditMode && phone.length !== 10) {
+      setCustomer(null);
+      setCustomerName('');
+      setCustomerEmail('');
     }
-  }, [phone]);
+  }, [phone, customers, isEditMode, phoneManuallyChanged]);
+
+  // Create customer mutation
+  const createCustomerMutation = useMutation({
+    mutationFn: api.customers.create,
+  });
+
+  // Create order mutation
+  const createOrderMutation = useMutation({
+    mutationFn: api.orders.create,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      toast.success('Order created successfully!');
+      onSuccess?.();
+      onClose();
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to create order');
+    },
+  });
+
+  // Update order mutation
+  const updateOrderMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: { customerId?: string | null; items?: Array<{ productId: string; qty: number }> } }) =>
+      api.orders.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      toast.success('Order updated successfully!');
+      onSuccess?.();
+      onClose();
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to update order');
+    },
+  });
 
   const handleAddItem = () => {
     if (!selectedProduct || !quantity) {
@@ -46,13 +158,31 @@ const OrderForm = ({ onClose, onSuccess }: OrderFormProps) => {
       return;
     }
 
-    const product = mockProducts.find((p) => p.id === selectedProduct);
+    const product = products.find((p: any) => p.id === selectedProduct);
     if (!product) return;
+
+    const qty = parseInt(quantity);
+    if (qty <= 0) {
+      toast.error('Quantity must be greater than 0');
+      return;
+    }
+
+    if (product.stock < qty) {
+      toast.error(`Insufficient stock. Available: ${product.stock}`);
+      return;
+    }
+
+    // Check if product already in order
+    const existingItem = orderItems.find((item) => item.productId === product.id);
+    if (existingItem) {
+      toast.error('Product already added. Remove it first to change quantity.');
+      return;
+    }
 
     const newItem: OrderItem = {
       productId: product.id,
       productName: product.name,
-      quantity: parseInt(quantity),
+      quantity: qty,
       price: product.price,
     };
 
@@ -70,7 +200,7 @@ const OrderForm = ({ onClose, onSuccess }: OrderFormProps) => {
     return orderItems.reduce((sum, item) => sum + item.quantity * item.price, 0);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!phone || phone.length !== 10) {
@@ -83,11 +213,53 @@ const OrderForm = ({ onClose, onSuccess }: OrderFormProps) => {
       return;
     }
 
-    // Mock order creation
-    toast.success('Order created successfully!');
-    onSuccess?.();
-    onClose();
+    try {
+      let customerId: string | null = null;
+
+      // If customer not found, create new one
+      if (!customer) {
+        if (!customerName.trim()) {
+          toast.error('Please enter customer name');
+          return;
+        }
+
+        const newCustomer = await createCustomerMutation.mutateAsync({
+          name: customerName,
+          phone,
+          email: customerEmail || undefined,
+        });
+        customerId = newCustomer.id;
+      } else {
+        customerId = customer.id;
+      }
+
+      // Create or update order
+      if (isEditMode && order) {
+        await updateOrderMutation.mutateAsync({
+          id: order.id,
+          data: {
+            customerId,
+            items: orderItems.map((item) => ({
+              productId: item.productId,
+              qty: item.quantity,
+            })),
+          },
+        });
+      } else {
+        await createOrderMutation.mutateAsync({
+          customerId,
+          items: orderItems.map((item) => ({
+            productId: item.productId,
+            qty: item.quantity,
+          })),
+        });
+      }
+    } catch (error) {
+      // Error handling is done in mutation onError
+    }
   };
+
+  const isLoading = createOrderMutation.isPending || updateOrderMutation.isPending || createCustomerMutation.isPending;
 
   return (
     <motion.div
@@ -105,8 +277,10 @@ const OrderForm = ({ onClose, onSuccess }: OrderFormProps) => {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="sticky top-0 bg-card border-b border-border p-4 sm:p-6 flex items-center justify-between">
-          <h2 className="text-xl sm:text-2xl font-bold">Create Order</h2>
-          <Button variant="ghost" size="icon" onClick={onClose} className="rounded-xl">
+          <h2 className="text-xl sm:text-2xl font-bold">
+            {isEditMode ? 'Edit Order' : 'Create Order'}
+          </h2>
+          <Button variant="ghost" size="icon" onClick={onClose} className="rounded-xl" disabled={isLoading}>
             <X className="w-5 h-5" />
           </Button>
         </div>
@@ -115,26 +289,60 @@ const OrderForm = ({ onClose, onSuccess }: OrderFormProps) => {
           {/* Customer Search */}
           <div className="space-y-4">
             <h3 className="text-lg font-semibold">Customer Details</h3>
-            <div className="space-y-2">
-              <Label htmlFor="phone">Phone Number *</Label>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  id="phone"
-                  type="tel"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
-                  placeholder="Enter 10-digit phone"
-                  className="rounded-xl pl-10"
-                  maxLength={10}
-                  required
-                />
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <Label htmlFor="phone">Phone Number *</Label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    id="phone"
+                    type="tel"
+                    value={phone}
+                    onChange={(e) => {
+                      setPhone(e.target.value.replace(/\D/g, '').slice(0, 10));
+                      setPhoneManuallyChanged(true);
+                    }}
+                    placeholder="Enter 10-digit phone"
+                    className="rounded-xl pl-10"
+                    maxLength={10}
+                    required
+                    disabled={isLoading}
+                  />
+                </div>
               </div>
               {phone.length === 10 && customer && (
                 <div className="bg-accent rounded-xl p-3 text-sm">
                   <p className="font-medium">{customer.name}</p>
-                  <p className="text-muted-foreground text-xs">{customer.email}</p>
-                  <p className="text-muted-foreground text-xs">Total Orders: {customer.orders}</p>
+                  <p className="text-muted-foreground text-xs">{customer.email || 'No email'}</p>
+                  <p className="text-muted-foreground text-xs">Orders: {customer.orders?.length || 0}</p>
+                </div>
+              )}
+              {phone.length === 10 && !customer && (
+                <div className="space-y-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="customerName">Customer Name *</Label>
+                    <Input
+                      id="customerName"
+                      value={customerName}
+                      onChange={(e) => setCustomerName(e.target.value)}
+                      placeholder="Enter customer name"
+                      className="rounded-xl"
+                      required
+                      disabled={isLoading}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="customerEmail">Email (Optional)</Label>
+                    <Input
+                      id="customerEmail"
+                      type="email"
+                      value={customerEmail}
+                      onChange={(e) => setCustomerEmail(e.target.value)}
+                      placeholder="Enter email"
+                      className="rounded-xl"
+                      disabled={isLoading}
+                    />
+                  </div>
                 </div>
               )}
             </div>
@@ -147,19 +355,26 @@ const OrderForm = ({ onClose, onSuccess }: OrderFormProps) => {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="sm:col-span-2 space-y-2">
                 <Label htmlFor="product">Product</Label>
-                <select
-                  id="product"
-                  value={selectedProduct}
-                  onChange={(e) => setSelectedProduct(e.target.value)}
-                  className="w-full h-10 px-3 rounded-xl border border-input bg-background text-sm"
-                >
-                  <option value="">Select product</option>
-                  {mockProducts.map((product) => (
-                    <option key={product.id} value={product.id}>
-                      {product.name} - ${product.price.toFixed(2)} ({product.stock} in stock)
-                    </option>
-                  ))}
-                </select>
+                {productsLoading ? (
+                  <div className="flex items-center justify-center h-10">
+                    <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                  </div>
+                ) : (
+                  <select
+                    id="product"
+                    value={selectedProduct}
+                    onChange={(e) => setSelectedProduct(e.target.value)}
+                    className="w-full h-10 px-3 rounded-xl border border-input bg-background text-sm"
+                    disabled={isLoading}
+                  >
+                    <option value="">Select product</option>
+                    {products.map((product: any) => (
+                      <option key={product.id} value={product.id}>
+                        {product.name} - ${product.price.toFixed(2)} ({product.stock} in stock)
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -172,8 +387,14 @@ const OrderForm = ({ onClose, onSuccess }: OrderFormProps) => {
                     value={quantity}
                     onChange={(e) => setQuantity(e.target.value)}
                     className="rounded-xl flex-1"
+                    disabled={isLoading}
                   />
-                  <Button type="button" onClick={handleAddItem} className="rounded-xl px-3">
+                  <Button 
+                    type="button" 
+                    onClick={handleAddItem} 
+                    className="rounded-xl px-3"
+                    disabled={isLoading || !selectedProduct}
+                  >
                     <Plus className="w-4 h-4" />
                   </Button>
                 </div>
@@ -215,11 +436,28 @@ const OrderForm = ({ onClose, onSuccess }: OrderFormProps) => {
           </div>
 
           <div className="flex flex-col-reverse sm:flex-row gap-3 pt-4">
-            <Button type="button" variant="outline" onClick={onClose} className="rounded-2xl flex-1">
+            <Button 
+              type="button" 
+              variant="outline" 
+              onClick={onClose} 
+              className="rounded-2xl flex-1"
+              disabled={isLoading}
+            >
               Cancel
             </Button>
-            <Button type="submit" className="rounded-2xl flex-1">
-              Create Order
+            <Button 
+              type="submit" 
+              className="rounded-2xl flex-1"
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  {isEditMode ? 'Updating...' : 'Creating...'}
+                </>
+              ) : (
+                isEditMode ? 'Update Order' : 'Create Order'
+              )}
             </Button>
           </div>
         </form>
