@@ -1,3 +1,33 @@
+-- Create User Defined Types
+CREATE TABLE "User" (
+    "id" TEXT PRIMARY KEY,
+
+    "fname" TEXT NOT NULL,
+    "lname" TEXT NOT NULL,
+    "username" TEXT NOT NULL UNIQUE,
+    "email" TEXT NOT NULL UNIQUE,
+    "organization" TEXT NOT NULL,
+    "passwordHash" TEXT NOT NULL,
+    "city" TEXT,
+    "country" TEXT,
+    "timezone" TEXT,
+    "phone" TEXT,
+    "plan_in_date" TIMESTAMP,
+    "plan_out_date" TIMESTAMP,
+  --- secirity fields
+    "last_logged_in" TIMESTAMP,
+    "last_forgot_pass" TIMESTAMP,
+    "pass_attempt" INT DEFAULT 0,
+    "blocked" BOOLEAN DEFAULT FALSE,
+    "status" TEXT DEFAULT 'active',
+    "latest_txn_id" TEXT,
+    -- timestamps
+    "created_at" TIMESTAMP DEFAULT NOW(),
+    "updated_at" TIMESTAMP DEFAULT NOW()
+);
+
+
+
 -- CreateTable
 CREATE TABLE "Product" (
     "id" TEXT NOT NULL,
