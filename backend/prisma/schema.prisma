@@ -19,7 +19,7 @@ model Product {
 
 model Customer {
   id        String   @id
-  name      String
+  name      String   @unique
   phone     String?
   email     String?
   orders    Order[]
@@ -45,3 +45,7 @@ model OrderItem {
   product   Product   @relation(fields: [productId], references: [id])
 }
 
+model IdempotencyKey {
+  key       String   @id
+  createdAt DateTime @default(now())
+}
