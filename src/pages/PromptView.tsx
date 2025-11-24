@@ -15,7 +15,9 @@ import {
   Edit3,
   Loader2,
   Users,
-  Eye
+  Eye,
+  HelpCircle,
+  X,
 } from "lucide-react";
 
 interface Message {
@@ -35,6 +37,7 @@ const PromptView = () => {
   const [input, setInput] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [showHelpModal, setShowHelpModal] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { toggleViewMode, logout } = useStore();
   const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
@@ -107,7 +110,10 @@ const PromptView = () => {
       } else {
         addMessage({
           type: "assistant",
-          content: data.error || data.response || "Sorry, I encountered an error. Please try again.",
+          content:
+            data.error ||
+            data.response ||
+            "Sorry, I encountered an error. Please try again.",
         });
       }
     } catch (error) {
@@ -121,14 +127,22 @@ const PromptView = () => {
     }
   };
 
-  const handleConfirmation = async (confirmed: boolean, actionType?: string, customerData?: any, fieldToEdit?: string) => {
+  const handleConfirmation = async (
+    confirmed: boolean,
+    actionType?: string,
+    customerData?: any,
+    fieldToEdit?: string
+  ) => {
     // Get the last message that needs confirmation
-    const lastMessage = [...messages].reverse().find(msg => msg.needsConfirmation);
-    
+    const lastMessage = [...messages]
+      .reverse()
+      .find((msg) => msg.needsConfirmation);
+
     if (!conversationId) {
       addMessage({
         type: "assistant",
-        content: "I'm not sure what you're confirming. Please try your command again.",
+        content:
+          "I'm not sure what you're confirming. Please try your command again.",
       });
       return;
     }
@@ -141,7 +155,7 @@ const PromptView = () => {
         confirmed,
         actionType: actionType || lastMessage?.actionType,
         customerData: customerData || lastMessage?.customerData,
-        fieldToEdit: fieldToEdit || lastMessage?.fieldToEdit
+        fieldToEdit: fieldToEdit || lastMessage?.fieldToEdit,
       };
 
       console.log("Sending confirmation:", confirmBody);
@@ -166,7 +180,6 @@ const PromptView = () => {
 
       // Clear conversation after confirmation
       setConversationId(null);
-
     } catch (error) {
       console.error("Confirmation error:", error);
       addMessage({
@@ -191,7 +204,7 @@ const PromptView = () => {
         actionType: message.actionType,
         customerData: message.customerData,
         fieldToEdit: message.fieldToEdit,
-        conversationId: conversationId
+        conversationId: conversationId,
       });
 
       return (
@@ -199,11 +212,22 @@ const PromptView = () => {
           <p className="whitespace-pre-line">{message.content}</p>
           <div className="flex gap-2">
             <Button
-              onClick={() => handleConfirmation(true, message.actionType, message.customerData, message.fieldToEdit)}
+              onClick={() =>
+                handleConfirmation(
+                  true,
+                  message.actionType,
+                  message.customerData,
+                  message.fieldToEdit
+                )
+              }
               disabled={isProcessing}
               className="bg-green-600 hover:bg-green-700"
             >
-              {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : "Yes, proceed"}
+              {isProcessing ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                "Yes, proceed"
+              )}
             </Button>
             <Button
               onClick={() => handleConfirmation(false)}
@@ -230,14 +254,21 @@ const PromptView = () => {
       return (
         <div className="mt-3 space-y-2">
           {data.map((item, idx) => (
-            <div key={idx} className="bg-background rounded-lg p-3 text-sm border">
+            <div
+              key={idx}
+              className="bg-background rounded-lg p-3 text-sm border"
+            >
               {item.name && (
                 <div className="font-medium text-base mb-1">{item.name}</div>
               )}
               {item.available !== undefined && (
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Stock:</span>
-                  <span className={item.available > 0 ? "text-green-600" : "text-red-600"}>
+                  <span
+                    className={
+                      item.available > 0 ? "text-green-600" : "text-red-600"
+                    }
+                  >
                     {item.available} available
                   </span>
                 </div>
@@ -245,7 +276,12 @@ const PromptView = () => {
               {item.price && (
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Price:</span>
-                  <span>${typeof item.price === 'number' ? item.price.toFixed(2) : item.price}</span>
+                  <span>
+                    $
+                    {typeof item.price === "number"
+                      ? item.price.toFixed(2)
+                      : item.price}
+                  </span>
                 </div>
               )}
             </div>
@@ -295,12 +331,14 @@ const PromptView = () => {
                 <div className="flex justify-between items-start">
                   <div>
                     <div className="font-medium">{customer.name}</div>
-                    <div className="text-sm text-muted-foreground">ID: {customer.id}</div>
+                    <div className="text-sm text-muted-foreground">
+                      ID: {customer.id}
+                    </div>
                   </div>
                   <div className="text-right text-sm">
                     <div>{customer.orders?.length || 0} orders</div>
                     <div className="text-xs text-muted-foreground">
-                      {customer.phone && `📞 ${customer.phone}`} 
+                      {customer.phone && `📞 ${customer.phone}`}
                       {customer.email && ` 📧 ${customer.email}`}
                     </div>
                   </div>
@@ -315,14 +353,17 @@ const PromptView = () => {
       if (data.orders && Array.isArray(data.orders)) {
         return (
           <div className="mt-3 space-y-2">
-            <div className="text-sm font-medium text-muted-foreground">Recent Orders:</div>
+            <div className="text-sm font-medium text-muted-foreground">
+              Recent Orders:
+            </div>
             {data.orders.map((order: any, idx: number) => (
               <div key={idx} className="bg-background rounded-lg p-3 border">
                 <div className="flex justify-between items-start">
                   <div>
                     <div className="font-medium">Order {order.id}</div>
                     <div className="text-sm text-muted-foreground">
-                      Total: ${order.total?.toFixed(2)} • {order.items?.length || 0} items
+                      Total: ${order.total?.toFixed(2)} •{" "}
+                      {order.items?.length || 0} items
                     </div>
                   </div>
                   <div className="text-right text-xs text-muted-foreground">
@@ -332,9 +373,16 @@ const PromptView = () => {
                 {order.items && order.items.length > 0 && (
                   <div className="mt-2 pt-2 border-t">
                     {order.items.map((item: any, itemIdx: number) => (
-                      <div key={itemIdx} className="flex justify-between text-xs">
-                        <span>{item.product?.name} × {item.qty}</span>
-                        <span>${((item.price || 0) * (item.qty || 0)).toFixed(2)}</span>
+                      <div
+                        key={itemIdx}
+                        className="flex justify-between text-xs"
+                      >
+                        <span>
+                          {item.product?.name} × {item.qty}
+                        </span>
+                        <span>
+                          ${((item.price || 0) * (item.qty || 0)).toFixed(2)}
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -383,6 +431,231 @@ const PromptView = () => {
     setInput("");
   };
 
+  // Help Modal Component
+  const HelpModal = () => (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="bg-background rounded-2xl shadow-xl max-w-2xl w-full max-h-[80vh] overflow-hidden"
+      >
+        <div className="flex items-center justify-between p-6 border-b">
+          <h2 className="text-2xl font-bold">Available Commands</h2>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setShowHelpModal(false)}
+            className="rounded-xl"
+          >
+            <X className="w-5 h-5" />
+          </Button>
+        </div>
+
+        <div className="p-6 overflow-y-auto max-h-[60vh]">
+          <div className="space-y-6">
+            {/* Customer Commands */}
+            <div>
+              <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                <Users className="w-5 h-5 text-blue-500" />
+                Customer Management
+              </h3>
+              <div className="grid gap-3">
+                <div className="bg-accent/50 rounded-lg p-4">
+                  <h4 className="font-medium mb-2">Create Customer</h4>
+                  <p className="text-sm text-muted-foreground mb-2">
+                    Create a new customer with name, email, and phone
+                  </p>
+                  <div className="space-y-1 text-xs">
+                    <div className="font-mono bg-background px-2 py-1 rounded">
+                      Create customer John
+                    </div>
+                    <div className="font-mono bg-background px-2 py-1 rounded">
+                      Add customer Sarah
+                    </div>
+                    <div className="font-mono bg-background px-2 py-1 rounded">
+                      New customer Mike
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-accent/50 rounded-lg p-4">
+                  <h4 className="font-medium mb-2">Edit Customer</h4>
+                  <p className="text-sm text-muted-foreground mb-2">
+                    Edit customer details (name, email, phone)
+                  </p>
+                  <div className="space-y-1 text-xs">
+                    <div className="font-mono bg-background px-2 py-1 rounded">
+                      Edit customer c1
+                    </div>
+                    <div className="font-mono bg-background px-2 py-1 rounded">
+                      Update customer John
+                    </div>
+                    <div className="font-mono bg-background px-2 py-1 rounded">
+                      Change customer c2
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-accent/50 rounded-lg p-4">
+                  <h4 className="font-medium mb-2">Delete Customer</h4>
+                  <p className="text-sm text-muted-foreground mb-2">
+                    Remove a customer and their orders
+                  </p>
+                  <div className="space-y-1 text-xs">
+                    <div className="font-mono bg-background px-2 py-1 rounded">
+                      Delete customer c1
+                    </div>
+                    <div className="font-mono bg-background px-2 py-1 rounded">
+                      Remove customer Sarah
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-accent/50 rounded-lg p-4">
+                  <h4 className="font-medium mb-2">View Customers</h4>
+                  <p className="text-sm text-muted-foreground mb-2">
+                    List or view customer details
+                  </p>
+                  <div className="space-y-1 text-xs">
+                    <div className="font-mono bg-background px-2 py-1 rounded">
+                      List customers
+                    </div>
+                    <div className="font-mono bg-background px-2 py-1 rounded">
+                      View customer c1
+                    </div>
+                    <div className="font-mono bg-background px-2 py-1 rounded">
+                      Show customers
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Product Commands */}
+            <div>
+              <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                <Package className="w-5 h-5 text-green-500" />
+                Product Management
+              </h3>
+              <div className="grid gap-3">
+                <div className="bg-accent/50 rounded-lg p-4">
+                  <h4 className="font-medium mb-2">Create Product</h4>
+                  <p className="text-sm text-muted-foreground mb-2">
+                    Create a new product with name, description, price, and
+                    stock
+                  </p>
+                  <div className="space-y-1 text-xs">
+                    <div className="font-mono bg-background px-2 py-1 rounded">
+                      Create product Laptop
+                    </div>
+                    <div className="font-mono bg-background px-2 py-1 rounded">
+                      Add product iPhone
+                    </div>
+                    <div className="font-mono bg-background px-2 py-1 rounded">
+                      New product Monitor
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-accent/50 rounded-lg p-4">
+                  <h4 className="font-medium mb-2">Edit Product</h4>
+                  <p className="text-sm text-muted-foreground mb-2">
+                    Edit product details (name, description, price, stock)
+                  </p>
+                  <div className="space-y-1 text-xs">
+                    <div className="font-mono bg-background px-2 py-1 rounded">
+                      Edit product p1
+                    </div>
+                    <div className="font-mono bg-background px-2 py-1 rounded">
+                      Update product Laptop
+                    </div>
+                    <div className="font-mono bg-background px-2 py-1 rounded">
+                      Change product p2
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-accent/50 rounded-lg p-4">
+                  <h4 className="font-medium mb-2">Delete Product</h4>
+                  <p className="text-sm text-muted-foreground mb-2">
+                    Remove a product
+                  </p>
+                  <div className="space-y-1 text-xs">
+                    <div className="font-mono bg-background px-2 py-1 rounded">
+                      Delete product p1
+                    </div>
+                    <div className="font-mono bg-background px-2 py-1 rounded">
+                      Remove product Laptop
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-accent/50 rounded-lg p-4">
+                  <h4 className="font-medium mb-2">View Products</h4>
+                  <p className="text-sm text-muted-foreground mb-2">
+                    List or view product details
+                  </p>
+                  <div className="space-y-1 text-xs">
+                    <div className="font-mono bg-background px-2 py-1 rounded">
+                      List products
+                    </div>
+                    <div className="font-mono bg-background px-2 py-1 rounded">
+                      View product p1
+                    </div>
+                    <div className="font-mono bg-background px-2 py-1 rounded">
+                      Show products
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* How to Use */}
+            <div className="bg-blue-50 dark:bg-blue-950/20 rounded-lg p-4">
+              <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-blue-500" />
+                How to Use
+              </h3>
+              <div className="space-y-2 text-sm">
+                <div className="flex items-start gap-2">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
+                  <p>
+                    Type commands in natural language - the AI understands
+                    various phrasings
+                  </p>
+                </div>
+                <div className="flex items-start gap-2">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
+                  <p>Follow the conversational flow when creating or editing</p>
+                </div>
+                <div className="flex items-start gap-2">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
+                  <p>
+                    Use customer IDs (c1, c2) or names to reference customers
+                  </p>
+                </div>
+                <div className="flex items-start gap-2">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
+                  <p>Use product IDs (p1, p2) or names to reference products</p>
+                </div>
+                <div className="flex items-start gap-2">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
+                  <p>
+                    Confirm actions when prompted for destructive operations
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-end p-6 border-t">
+          <Button onClick={() => setShowHelpModal(false)}>Got it!</Button>
+        </div>
+      </motion.div>
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
@@ -397,6 +670,14 @@ const PromptView = () => {
             </h1>
           </div>
           <div className="flex items-center gap-2 sm:gap-3">
+            <Button
+              variant="outline"
+              onClick={() => setShowHelpModal(true)}
+              className="rounded-2xl text-xs sm:text-sm px-3 sm:px-4"
+            >
+              <HelpCircle className="w-4 h-4 mr-2" />
+              <span className="hidden sm:inline">Help</span>
+            </Button>
             <Button
               variant="outline"
               onClick={clearConversation}
@@ -440,11 +721,19 @@ const PromptView = () => {
                 <span>AI-Powered Assistant</span>
               </div>
               <h2 className="text-3xl sm:text-4xl font-bold">
-                Customer Management
+                Customer & Product Management
               </h2>
               <p className="text-muted-foreground text-lg">
-                Create, edit, delete, and manage your customers with natural language
+                Manage customers and products with natural language commands
               </p>
+              <Button
+                onClick={() => setShowHelpModal(true)}
+                variant="outline"
+                className="mt-4"
+              >
+                <HelpCircle className="w-4 h-4 mr-2" />
+                View Available Commands
+              </Button>
             </motion.div>
           )}
 
@@ -504,7 +793,7 @@ const PromptView = () => {
           <div className="border-t pt-4">
             <div className="flex gap-2">
               <Textarea
-                placeholder="Type your command... (e.g., 'Create customer John', 'Edit customer c1', 'Delete customer Sarah', 'List customers', 'View customer c1')"
+                placeholder="Type your command... (e.g., 'Create customer John', 'Edit product p1', 'List customers', 'View product p1')"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => {
@@ -535,9 +824,12 @@ const PromptView = () => {
               {[
                 "Create customer Alex",
                 "Edit customer c1",
-                "Delete customer c2", 
+                "Delete customer c2",
                 "List customers",
-                "View customer c1"
+                "View customer c1",
+                "Create product Laptop",
+                "Edit product p1",
+                "List products",
               ].map((example) => (
                 <Button
                   key={example}
@@ -554,6 +846,9 @@ const PromptView = () => {
           </div>
         </div>
       </div>
+
+      {/* Help Modal */}
+      {showHelpModal && <HelpModal />}
     </div>
   );
 };
