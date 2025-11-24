@@ -26,6 +26,15 @@ const ConfirmRequestSchema = z.object({
       phone: z.string().optional().nullable(),
     })
     .optional(),
+  productData: z
+    .object({
+      id: z.string().optional(),
+      name: z.string().optional(),
+      description: z.string().optional().nullable(),
+      price: z.number().optional(),
+      stock: z.number().optional(),
+    })
+    .optional(),
   fieldToEdit: z.string().optional(),
 });
 
@@ -53,6 +62,25 @@ async function generateNextCustomerId() {
   }
 }
 
+// Generate product ID like p1, p2, p3...
+async function generateNextProductId() {
+  try {
+    const lastProduct = await prisma.product.findFirst({
+      orderBy: { id: "desc" },
+      select: { id: true },
+    });
+
+    if (lastProduct && lastProduct.id.startsWith("p")) {
+      const lastNumber = parseInt(lastProduct.id.substring(1));
+      return `p${lastNumber + 1}`;
+    }
+    return "p1";
+  } catch (error) {
+    console.error("Error generating product ID:", error);
+    return `p${Date.now()}`;
+  }
+}
+
 // Customer flow states
 const CUSTOMER_FLOW_STATES = {
   // Create customer flow
@@ -74,13 +102,35 @@ const CUSTOMER_FLOW_STATES = {
   COMPLETED: "completed",
 };
 
-// Parse customer commands - FIXED VERSION
+// Product flow states
+const PRODUCT_FLOW_STATES = {
+  // Create product flow
+  CREATE_START: "create_start",
+  CREATE_ASK_DESCRIPTION: "create_ask_description",
+  CREATE_ASK_PRICE: "create_ask_price",
+  CREATE_ASK_STOCK: "create_ask_stock",
+  CREATE_CONFIRM_DETAILS: "create_confirm_details",
+
+  // Edit product flow
+  EDIT_SELECT_PRODUCT: "edit_select_product",
+  EDIT_SELECT_FIELD: "edit_select_field",
+  EDIT_ENTER_NEW_VALUE: "edit_enter_new_value",
+  EDIT_CONFIRM_CHANGE: "edit_confirm_change",
+
+  // Delete product flow
+  DELETE_SELECT_PRODUCT: "delete_select_product",
+  DELETE_CONFIRM: "delete_confirm",
+
+  COMPLETED: "completed",
+};
+
+// Parse customer commands
 function parseCustomerCommand(text, context = null) {
   const lowerText = text.toLowerCase().trim();
   console.log("Parsing customer command:", text, "Context:", context);
 
   // Handle conversational flows FIRST (most important)
-  if (context && context.flowState) {
+  if (context && context.flowState && context.domain === "customer") {
     return handleCustomerFlow(text, context);
   }
 
@@ -97,6 +147,7 @@ function parseCustomerCommand(text, context = null) {
       flowState: CUSTOMER_FLOW_STATES.DELETE_CONFIRM,
       actionType: "delete_customer",
       needsConfirmation: true,
+      domain: "customer",
     };
   }
 
@@ -112,6 +163,7 @@ function parseCustomerCommand(text, context = null) {
       response: `✏️ Let's edit customer "${customerIdentifier}". Which field would you like to edit? (name, email, phone)`,
       flowState: CUSTOMER_FLOW_STATES.EDIT_SELECT_FIELD,
       actionType: "edit_customer",
+      domain: "customer",
     };
   }
 
@@ -135,6 +187,7 @@ function parseCustomerCommand(text, context = null) {
       response: `👤 Great! Let's create customer "${customerName}". What's their email address? (or type 'skip')`,
       flowState: CUSTOMER_FLOW_STATES.CREATE_ASK_EMAIL,
       actionType: "create_customer",
+      domain: "customer",
     };
   }
 
@@ -144,6 +197,7 @@ function parseCustomerCommand(text, context = null) {
       intent: "list_customers",
       response: "📋 Let me fetch the list of customers...",
       actionType: "list_customers",
+      domain: "customer",
     };
   }
 
@@ -156,14 +210,123 @@ function parseCustomerCommand(text, context = null) {
       customerIdentifier: customerIdentifier,
       response: `🔍 Let me get details for customer "${customerIdentifier}"...`,
       actionType: "view_customer",
+      domain: "customer",
     };
+  }
+
+  return null;
+}
+
+// Parse product commands
+function parseProductCommand(text, context = null) {
+  const lowerText = text.toLowerCase().trim();
+  console.log("Parsing product command:", text, "Context:", context);
+
+  // Handle conversational flows FIRST (most important)
+  if (context && context.flowState && context.domain === "product") {
+    return handleProductFlow(text, context);
+  }
+
+  // DELETE product commands - HIGH PRIORITY
+  const deleteMatch = lowerText.match(/^(?:delete|remove)\s+product\s+(.+)$/i);
+  if (deleteMatch) {
+    const productIdentifier = deleteMatch[1].trim();
+    return {
+      intent: "delete_product",
+      productIdentifier: productIdentifier,
+      response: `⚠️ Are you sure you want to delete product "${productIdentifier}"? This cannot be undone.`,
+      flowState: PRODUCT_FLOW_STATES.DELETE_CONFIRM,
+      actionType: "delete_product",
+      needsConfirmation: true,
+      domain: "product",
+    };
+  }
+
+  // EDIT product commands - MEDIUM PRIORITY
+  const editMatch = lowerText.match(
+    /^(?:edit|update|modify|change)\s+product\s+(.+)$/i
+  );
+  if (editMatch) {
+    const productIdentifier = editMatch[1].trim();
+    return {
+      intent: "edit_product",
+      productIdentifier: productIdentifier,
+      response: `✏️ Let's edit product "${productIdentifier}". Which field would you like to edit? (name, description, price, stock)`,
+      flowState: PRODUCT_FLOW_STATES.EDIT_SELECT_FIELD,
+      actionType: "edit_product",
+      domain: "product",
+    };
+  }
+
+  // CREATE product commands - LOW PRIORITY
+  const createMatch =
+    lowerText.match(/^(?:create|add|make)\s+(?:a\s+)?product\s+(.+)$/i) ||
+    lowerText.match(/^(?:new\s+)?product\s+(.+)$/i);
+  if (createMatch) {
+    const productName = createMatch[1].trim();
+    // Don't allow creating products with IDs like p1, p2, etc.
+    if (productName.match(/^p\d+$/i)) {
+      return {
+        intent: "unknown",
+        response: `"${productName}" looks like a product ID. To edit or delete a product, use: "Edit product ${productName}" or "Delete product ${productName}"`,
+        actionType: "unknown",
+      };
+    }
+    return {
+      intent: "create_product",
+      productName: productName,
+      response: `📦 Great! Let's create product "${productName}". What's the description? (or type 'skip')`,
+      flowState: PRODUCT_FLOW_STATES.CREATE_ASK_DESCRIPTION,
+      actionType: "create_product",
+      domain: "product",
+    };
+  }
+
+  // List products command
+  if (lowerText.match(/^(?:list|show|view)\s+products$/i)) {
+    return {
+      intent: "list_products",
+      response: "📋 Let me fetch the list of products...",
+      actionType: "list_products",
+      domain: "product",
+    };
+  }
+
+  // View specific product
+  const viewMatch = lowerText.match(/^(?:view|show|get)\s+product\s+(.+)$/i);
+  if (viewMatch) {
+    const productIdentifier = viewMatch[1].trim();
+    return {
+      intent: "view_product",
+      productIdentifier: productIdentifier,
+      response: `🔍 Let me get details for product "${productIdentifier}"...`,
+      actionType: "view_product",
+      domain: "product",
+    };
+  }
+
+  return null;
+}
+
+// Main command parser
+function parseCommand(text, context = null) {
+  // Try customer commands first
+  const customerPlan = parseCustomerCommand(text, context);
+  if (customerPlan && customerPlan.intent !== "unknown") {
+    return customerPlan;
+  }
+
+  // Try product commands second
+  const productPlan = parseProductCommand(text, context);
+  if (productPlan && productPlan.intent !== "unknown") {
+    return productPlan;
   }
 
   // Default response
   return {
     intent: "unknown",
     response:
-      "I can help you with customer management. Try:\n• 'Create customer John'\n• 'Edit customer c1'  \n• 'Delete customer c2'\n• 'List customers'\n• 'View customer c1'",
+      "I can help you with customer or product management. Try:\n\n**Customers:**\n• 'Create customer John'\n• 'Edit customer c1'  \n• 'Delete customer c2'\n• 'List customers'\n• 'View customer c1'\n\n**Products:**\n• 'Create product Laptop'\n• 'Edit product p1'\n• 'Delete product p2'\n• 'List products'\n• 'View product p1'",
     actionType: "unknown",
   };
 }
@@ -190,6 +353,7 @@ function handleCustomerFlow(text, context) {
             email: null,
           },
           actionType: "create_customer",
+          domain: "customer",
         };
       } else {
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -203,6 +367,7 @@ function handleCustomerFlow(text, context) {
               email: text.trim(),
             },
             actionType: "create_customer",
+            domain: "customer",
           };
         } else {
           return {
@@ -212,6 +377,7 @@ function handleCustomerFlow(text, context) {
             flowState: CUSTOMER_FLOW_STATES.CREATE_ASK_EMAIL,
             customerData: context.customerData,
             actionType: "create_customer",
+            domain: "customer",
           };
         }
       }
@@ -237,6 +403,7 @@ function handleCustomerFlow(text, context) {
           flowState: CUSTOMER_FLOW_STATES.CREATE_CONFIRM_DETAILS,
           customerData: customerData,
           actionType: "create_customer",
+          domain: "customer",
           needsConfirmation: true,
         };
       } else {
@@ -255,14 +422,15 @@ function handleCustomerFlow(text, context) {
           flowState: CUSTOMER_FLOW_STATES.CREATE_CONFIRM_DETAILS,
           customerData: customerData,
           actionType: "create_customer",
+          domain: "customer",
           needsConfirmation: true,
         };
       }
 
     // EDIT CUSTOMER FLOW
     case CUSTOMER_FLOW_STATES.EDIT_SELECT_FIELD:
-      const validFields = ["name", "email", "phone"];
-      if (validFields.includes(lowerText)) {
+      const validCustomerFields = ["name", "email", "phone"];
+      if (validCustomerFields.includes(lowerText)) {
         return {
           intent: "edit_customer",
           response: `What's the new ${lowerText} for customer ${context.customerData.name}?`,
@@ -270,6 +438,7 @@ function handleCustomerFlow(text, context) {
           customerData: context.customerData,
           fieldToEdit: lowerText,
           actionType: "edit_customer",
+          domain: "customer",
         };
       } else {
         return {
@@ -279,6 +448,7 @@ function handleCustomerFlow(text, context) {
           flowState: CUSTOMER_FLOW_STATES.EDIT_SELECT_FIELD,
           customerData: context.customerData,
           actionType: "edit_customer",
+          domain: "customer",
         };
       }
 
@@ -301,6 +471,7 @@ function handleCustomerFlow(text, context) {
         customerData: updatedCustomerData,
         fieldToEdit: context.fieldToEdit,
         actionType: "edit_customer",
+        domain: "customer",
         needsConfirmation: true,
       };
 
@@ -313,7 +484,205 @@ function handleCustomerFlow(text, context) {
   }
 }
 
-// Find customer by ID or name - FIXED VERSION
+// Handle product conversational flows
+function handleProductFlow(text, context) {
+  const lowerText = text.toLowerCase().trim();
+
+  switch (context.flowState) {
+    // CREATE PRODUCT FLOW
+    case PRODUCT_FLOW_STATES.CREATE_ASK_DESCRIPTION:
+      if (
+        lowerText === "skip" ||
+        lowerText === "no description" ||
+        lowerText === "none"
+      ) {
+        return {
+          intent: "create_product",
+          response: "Okay, no description. What's the price? (e.g., 99.99)",
+          flowState: PRODUCT_FLOW_STATES.CREATE_ASK_PRICE,
+          productData: {
+            ...context.productData,
+            description: null,
+          },
+          actionType: "create_product",
+          domain: "product",
+        };
+      } else {
+        return {
+          intent: "create_product",
+          response: `📝 Description set to: ${text.trim()}. What's the price? (e.g., 99.99)`,
+          flowState: PRODUCT_FLOW_STATES.CREATE_ASK_PRICE,
+          productData: {
+            ...context.productData,
+            description: text.trim(),
+          },
+          actionType: "create_product",
+          domain: "product",
+        };
+      }
+
+    case PRODUCT_FLOW_STATES.CREATE_ASK_PRICE:
+      const price = parseFloat(text.trim());
+      if (isNaN(price) || price < 0) {
+        return {
+          intent: "create_product",
+          response: "Please provide a valid price (e.g., 99.99)",
+          flowState: PRODUCT_FLOW_STATES.CREATE_ASK_PRICE,
+          productData: context.productData,
+          actionType: "create_product",
+          domain: "product",
+        };
+      } else {
+        return {
+          intent: "create_product",
+          response: `💰 Price set to: $${price.toFixed(
+            2
+          )}. What's the stock quantity? (e.g., 100)`,
+          flowState: PRODUCT_FLOW_STATES.CREATE_ASK_STOCK,
+          productData: {
+            ...context.productData,
+            price: price,
+          },
+          actionType: "create_product",
+          domain: "product",
+        };
+      }
+
+    case PRODUCT_FLOW_STATES.CREATE_ASK_STOCK:
+      const stock = parseInt(text.trim());
+      if (isNaN(stock) || stock < 0) {
+        return {
+          intent: "create_product",
+          response: "Please provide a valid stock quantity (e.g., 100)",
+          flowState: PRODUCT_FLOW_STATES.CREATE_ASK_STOCK,
+          productData: context.productData,
+          actionType: "create_product",
+          domain: "product",
+        };
+      } else {
+        const productData = {
+          ...context.productData,
+          stock: stock,
+        };
+
+        return {
+          intent: "create_product",
+          response: `📊 Stock set to: ${stock}. ✅ Perfect! Let me confirm the details:\n\n📋 Product Details:\n• Name: ${
+            productData.name
+          }\n• Description: ${
+            productData.description || "Not provided"
+          }\n• Price: $${productData.price.toFixed(2)}\n• Stock: ${
+            productData.stock
+          }\n\nShould I create this product?`,
+          flowState: PRODUCT_FLOW_STATES.CREATE_CONFIRM_DETAILS,
+          productData: productData,
+          actionType: "create_product",
+          domain: "product",
+          needsConfirmation: true,
+        };
+      }
+
+    // EDIT PRODUCT FLOW
+    case PRODUCT_FLOW_STATES.EDIT_SELECT_FIELD:
+      const validProductFields = ["name", "description", "price", "stock"];
+      if (validProductFields.includes(lowerText)) {
+        return {
+          intent: "edit_product",
+          response: `What's the new ${lowerText} for product ${context.productData.name}?`,
+          flowState: PRODUCT_FLOW_STATES.EDIT_ENTER_NEW_VALUE,
+          productData: context.productData,
+          fieldToEdit: lowerText,
+          actionType: "edit_product",
+          domain: "product",
+        };
+      } else {
+        return {
+          intent: "edit_product",
+          response:
+            "Please choose a valid field to edit: name, description, price, or stock",
+          flowState: PRODUCT_FLOW_STATES.EDIT_SELECT_FIELD,
+          productData: context.productData,
+          actionType: "edit_product",
+          domain: "product",
+        };
+      }
+
+    case PRODUCT_FLOW_STATES.EDIT_ENTER_NEW_VALUE:
+      let newValue = text.trim();
+      const oldValue = context.productData[context.fieldToEdit];
+
+      // Handle numeric fields
+      if (context.fieldToEdit === "price") {
+        const priceValue = parseFloat(newValue);
+        if (isNaN(priceValue) || priceValue < 0) {
+          return {
+            intent: "edit_product",
+            response: "Please provide a valid price (e.g., 99.99)",
+            flowState: PRODUCT_FLOW_STATES.EDIT_ENTER_NEW_VALUE,
+            productData: context.productData,
+            fieldToEdit: context.fieldToEdit,
+            actionType: "edit_product",
+            domain: "product",
+          };
+        }
+        newValue = priceValue;
+      } else if (context.fieldToEdit === "stock") {
+        const stockValue = parseInt(newValue);
+        if (isNaN(stockValue) || stockValue < 0) {
+          return {
+            intent: "edit_product",
+            response: "Please provide a valid stock quantity (e.g., 100)",
+            flowState: PRODUCT_FLOW_STATES.EDIT_ENTER_NEW_VALUE,
+            productData: context.productData,
+            fieldToEdit: context.fieldToEdit,
+            actionType: "edit_product",
+            domain: "product",
+          };
+        }
+        newValue = stockValue;
+      }
+
+      // Create updated product data
+      const updatedProductData = {
+        ...context.productData,
+        [context.fieldToEdit]: newValue,
+      };
+
+      const displayOldValue =
+        context.fieldToEdit === "price"
+          ? `$${oldValue?.toFixed(2) || "Not set"}`
+          : context.fieldToEdit === "stock"
+          ? oldValue || "Not set"
+          : oldValue || "Not set";
+
+      const displayNewValue =
+        context.fieldToEdit === "price"
+          ? `$${newValue.toFixed(2)}`
+          : context.fieldToEdit === "stock"
+          ? newValue
+          : newValue;
+
+      return {
+        intent: "edit_product",
+        response: `Confirm change:\n${context.fieldToEdit}: "${displayOldValue}" → "${displayNewValue}"\n\nShould I update this product?`,
+        flowState: PRODUCT_FLOW_STATES.EDIT_CONFIRM_CHANGE,
+        productData: updatedProductData,
+        fieldToEdit: context.fieldToEdit,
+        actionType: "edit_product",
+        domain: "product",
+        needsConfirmation: true,
+      };
+
+    default:
+      return {
+        intent: "unknown",
+        response: "I'm not sure what you want to do. Let's start over.",
+        actionType: "unknown",
+      };
+  }
+}
+
+// Find customer by ID or name
 async function findCustomer(identifier) {
   if (!identifier) {
     console.log("❌ No identifier provided to findCustomer");
@@ -322,7 +691,6 @@ async function findCustomer(identifier) {
 
   console.log("🔍 Finding customer with identifier:", identifier);
 
-  // Try by ID first
   try {
     let customer = await prisma.customer.findUnique({
       where: { id: identifier },
@@ -356,6 +724,48 @@ async function findCustomer(identifier) {
   }
 }
 
+// Find product by ID or name
+async function findProduct(identifier) {
+  if (!identifier) {
+    console.log("❌ No identifier provided to findProduct");
+    return null;
+  }
+
+  console.log("🔍 Finding product with identifier:", identifier);
+
+  try {
+    let product = await prisma.product.findUnique({
+      where: { id: identifier },
+    });
+
+    if (product) {
+      console.log("✅ Found product by ID:", product.name);
+      return product;
+    }
+
+    // If not found by ID, try by name
+    product = await prisma.product.findFirst({
+      where: {
+        name: {
+          equals: identifier,
+          mode: "insensitive",
+        },
+      },
+    });
+
+    if (product) {
+      console.log("✅ Found product by name:", product.name);
+    } else {
+      console.log("❌ Product not found:", identifier);
+    }
+
+    return product;
+  } catch (error) {
+    console.error("❌ Error finding product:", error);
+    return null;
+  }
+}
+
 // Main command endpoint
 router.post("/", async (req, res) => {
   try {
@@ -368,10 +778,10 @@ router.post("/", async (req, res) => {
     if (context) {
       // Only clear if it's definitely a new command, not a continuation
       const isContinuation = text.match(
-        /^(skip|yes|no|cancel|name|email|phone|\d+|[^@\s]+@[^@\s]+\.[^@\s]+)$/i
+        /^(skip|yes|no|cancel|name|email|phone|description|price|stock|\d+|[^@\s]+@[^@\s]+\.[^@\s]+)$/i
       );
       const isEditFlow =
-        context.flowState && context.flowState.startsWith("edit_");
+        context.flowState && context.flowState.includes("edit_");
 
       if (!isContinuation && !isEditFlow) {
         console.log("🔄 Clearing old conversation for new command");
@@ -381,14 +791,14 @@ router.post("/", async (req, res) => {
     }
 
     // Parse the command
-    const plan = parseCustomerCommand(text, context);
+    const plan = parseCommand(text, context);
     console.log("📝 Parsed plan:", plan);
 
     let responseData = {
       response: plan.response,
       needsConfirmation: plan.needsConfirmation,
       actionType: plan.actionType,
-      parsedBy: "customer_flow",
+      parsedBy: plan.domain || "unknown",
     };
 
     let newConversationId = conversationId;
@@ -404,6 +814,7 @@ router.post("/", async (req, res) => {
         customerData: plan.customerData || { name: plan.customerName },
         intent: "create_customer",
         actionType: "create_customer",
+        domain: "customer",
       };
 
       conversationStore.set(newConversationId, updatedContext);
@@ -441,11 +852,12 @@ router.post("/", async (req, res) => {
 
       const updatedContext = {
         flowState: plan.flowState,
-        customerData: plan.customerData || customer, // Use the updated data from plan if available
-        originalCustomerData: customer, // Store original data for reference
+        customerData: plan.customerData || customer,
+        originalCustomerData: customer,
         intent: "edit_customer",
         actionType: "edit_customer",
         fieldToEdit: plan.fieldToEdit,
+        domain: "customer",
       };
 
       conversationStore.set(newConversationId, updatedContext);
@@ -473,6 +885,7 @@ router.post("/", async (req, res) => {
         customerData: customer,
         intent: "delete_customer",
         actionType: "delete_customer",
+        domain: "customer",
       };
 
       conversationStore.set(newConversationId, updatedContext);
@@ -543,6 +956,135 @@ router.post("/", async (req, res) => {
 
         responseData.data = { customer: customer, orders: orders };
       }
+    }
+    // PRODUCT INTENTS
+    else if (plan.intent === "create_product") {
+      if (!newConversationId) {
+        newConversationId = generateConversationId();
+      }
+
+      const updatedContext = {
+        flowState: plan.flowState,
+        productData: plan.productData || { name: plan.productName },
+        intent: "create_product",
+        actionType: "create_product",
+        domain: "product",
+      };
+
+      conversationStore.set(newConversationId, updatedContext);
+      responseData.conversationId = newConversationId;
+      responseData.productData = plan.productData;
+      responseData.fieldToEdit = plan.fieldToEdit;
+    } else if (plan.intent === "edit_product") {
+      if (!newConversationId) {
+        newConversationId = generateConversationId();
+      }
+
+      console.log("✏️ Edit product flow - Current context:", {
+        hasContext: !!context,
+        flowState: context?.flowState,
+        productData: context?.productData,
+      });
+
+      let product;
+
+      if (context && context.productData) {
+        // Use product from existing context
+        product = context.productData;
+        console.log("✅ Using product from context:", product.name);
+      } else {
+        // Find the product to edit (only on first call)
+        product = await findProduct(plan.productIdentifier);
+        if (!product) {
+          return res.json({
+            response: `❌ Product "${plan.productIdentifier}" not found.`,
+            actionType: "edit_product",
+          });
+        }
+        console.log("✅ Found product for editing:", product.name);
+      }
+
+      const updatedContext = {
+        flowState: plan.flowState,
+        productData: plan.productData || product,
+        originalProductData: product,
+        intent: "edit_product",
+        actionType: "edit_product",
+        fieldToEdit: plan.fieldToEdit,
+        domain: "product",
+      };
+
+      conversationStore.set(newConversationId, updatedContext);
+      responseData.conversationId = newConversationId;
+      responseData.productData = updatedContext.productData;
+      responseData.fieldToEdit = plan.fieldToEdit;
+
+      console.log("✅ Edit flow updated - FlowState:", plan.flowState);
+    } else if (plan.intent === "delete_product") {
+      if (!newConversationId) {
+        newConversationId = generateConversationId();
+      }
+
+      // Find the product to delete
+      const product = await findProduct(plan.productIdentifier);
+      if (!product) {
+        return res.json({
+          response: `❌ Product "${plan.productIdentifier}" not found.`,
+          actionType: "delete_product",
+        });
+      }
+
+      const updatedContext = {
+        flowState: plan.flowState,
+        productData: product,
+        intent: "delete_product",
+        actionType: "delete_product",
+        domain: "product",
+      };
+
+      conversationStore.set(newConversationId, updatedContext);
+      responseData.conversationId = newConversationId;
+      responseData.productData = product;
+      responseData.needsConfirmation = true;
+    } else if (plan.intent === "list_products") {
+      const products = await prisma.product.findMany({
+        orderBy: { name: "asc" },
+      });
+
+      if (products.length === 0) {
+        responseData.response = "📋 No products found.";
+      } else {
+        const productList = products
+          .map(
+            (prod) =>
+              `• ${prod.name} (ID: ${prod.id}) - $${prod.price.toFixed(
+                2
+              )} - Stock: ${prod.stock} - ${
+                prod.description || "No description"
+              }`
+          )
+          .join("\n");
+
+        responseData.response = `📋 Products (${products.length}):\n\n${productList}`;
+        responseData.data = { products: products };
+      }
+    } else if (plan.intent === "view_product") {
+      // Find the product to view
+      const product = await findProduct(plan.productIdentifier);
+      if (!product) {
+        responseData.response = `❌ Product "${plan.productIdentifier}" not found.`;
+      } else {
+        responseData.response =
+          `📋 Product Details:\n\n` +
+          `• ID: ${product.id}\n` +
+          `• Name: ${product.name}\n` +
+          `• Description: ${product.description || "Not provided"}\n` +
+          `• Price: $${product.price.toFixed(2)}\n` +
+          `• Stock: ${product.stock}\n` +
+          `• Created: ${product.createdAt.toLocaleDateString()}`;
+
+        responseData.data = { product: product };
+      }
     } else if (plan.intent === "unknown") {
       responseData.response = plan.response;
     }
@@ -565,13 +1107,19 @@ router.post("/", async (req, res) => {
   }
 });
 
-// Confirmation endpoint - FIXED EDIT CUSTOMER
+// Confirmation endpoint - FIXED FOR BOTH CUSTOMER AND PRODUCT
 router.post("/confirm", async (req, res) => {
   try {
     console.log("✅ Confirm request:", req.body);
 
-    const { conversationId, confirmed, actionType, customerData, fieldToEdit } =
-      ConfirmRequestSchema.parse(req.body);
+    const {
+      conversationId,
+      confirmed,
+      actionType,
+      customerData,
+      productData,
+      fieldToEdit,
+    } = ConfirmRequestSchema.parse(req.body);
     const context = conversationStore.get(conversationId);
 
     if (!context) {
@@ -674,6 +1222,95 @@ router.post("/confirm", async (req, res) => {
       conversationStore.delete(conversationId);
       response = `✅ Customer "${customerDataToUse.name}" (ID: ${customerDataToUse.id}) has been deleted successfully.`;
       data = { deletedCustomer: customerDataToUse };
+    }
+    // PRODUCT ACTIONS
+    else if (actionType === "create_product") {
+      const productDataToUse = productData || context.productData;
+
+      // Check if product already exists
+      const existingProduct = await prisma.product.findFirst({
+        where: {
+          name: {
+            equals: productDataToUse.name,
+            mode: "insensitive",
+          },
+        },
+      });
+
+      if (existingProduct) {
+        conversationStore.delete(conversationId);
+        return res.json({
+          response: `❌ Product "${productDataToUse.name}" already exists with ID: ${existingProduct.id}`,
+        });
+      }
+
+      const productId = await generateNextProductId();
+      const newProduct = await prisma.product.create({
+        data: {
+          id: productId,
+          name: productDataToUse.name,
+          description: productDataToUse.description || null,
+          price: productDataToUse.price || 0,
+          stock: productDataToUse.stock || 0,
+        },
+      });
+
+      conversationStore.delete(conversationId);
+      response = `✅ Product created successfully!\n\n📋 Product Details:\n• ID: ${
+        newProduct.id
+      }\n• Name: ${newProduct.name}\n• Description: ${
+        newProduct.description || "Not provided"
+      }\n• Price: $${newProduct.price.toFixed(2)}\n• Stock: ${
+        newProduct.stock
+      }`;
+      data = { product: newProduct };
+    } else if (actionType === "edit_product") {
+      // Use the context data which contains the UPDATED values from the conversation flow
+      const productDataToUse = context.productData;
+      const field = fieldToEdit || context.fieldToEdit;
+      const newValue = productDataToUse[field];
+
+      console.log("🔄 Updating product:", {
+        productId: productDataToUse.id,
+        field: field,
+        oldValue:
+          context.originalProductData?.[field] || productDataToUse[field],
+        newValue: newValue,
+      });
+
+      // Build update data object
+      const updateData = {};
+      updateData[field] = newValue;
+
+      console.log("📝 Update data:", updateData);
+
+      const updatedProduct = await prisma.product.update({
+        where: { id: productDataToUse.id },
+        data: updateData,
+      });
+
+      console.log("✅ Product updated in database:", updatedProduct);
+
+      conversationStore.delete(conversationId);
+      response = `✅ Product updated successfully!\n\n📋 Updated Details:\n• ID: ${
+        updatedProduct.id
+      }\n• Name: ${updatedProduct.name}\n• Description: ${
+        updatedProduct.description || "Not provided"
+      }\n• Price: $${updatedProduct.price.toFixed(2)}\n• Stock: ${
+        updatedProduct.stock
+      }`;
+      data = { product: updatedProduct };
+    } else if (actionType === "delete_product") {
+      const productDataToUse = productData || context.productData;
+
+      // Delete product
+      await prisma.product.delete({
+        where: { id: productDataToUse.id },
+      });
+
+      conversationStore.delete(conversationId);
+      response = `✅ Product "${productDataToUse.name}" (ID: ${productDataToUse.id}) has been deleted successfully.`;
+      data = { deletedProduct: productDataToUse };
     } else {
       response = `✅ Action completed: ${actionType}`;
       conversationStore.delete(conversationId);
@@ -703,7 +1340,9 @@ router.get("/health", (req, res) => {
       id,
       flowState: context.flowState,
       actionType: context.actionType,
+      domain: context.domain,
       customerName: context.customerData?.name,
+      productName: context.productData?.name,
     })
   );
 
@@ -711,7 +1350,7 @@ router.get("/health", (req, res) => {
     status: "ok",
     activeConversations: activeConversations,
     totalConversations: conversationStore.size,
-    message: "Customer management service is running",
+    message: "Customer and product management service is running",
   });
 });
 
