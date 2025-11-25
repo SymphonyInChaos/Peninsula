@@ -35,6 +35,22 @@ const ConfirmRequestSchema = z.object({
       stock: z.number().optional(),
     })
     .optional(),
+  orderData: z
+    .object({
+      id: z.string().optional(),
+      customerId: z.string().optional(),
+      items: z
+        .array(
+          z.object({
+            productId: z.string(),
+            qty: z.number(),
+            price: z.number(),
+          })
+        )
+        .optional(),
+      total: z.number().optional(),
+    })
+    .optional(),
   fieldToEdit: z.string().optional(),
 });
 
@@ -81,6 +97,25 @@ async function generateNextProductId() {
   }
 }
 
+// Generate order ID like o1, o2, o3...
+async function generateNextOrderId() {
+  try {
+    const lastOrder = await prisma.order.findFirst({
+      orderBy: { id: "desc" },
+      select: { id: true },
+    });
+
+    if (lastOrder && lastOrder.id.startsWith("o")) {
+      const lastNumber = parseInt(lastOrder.id.substring(1));
+      return `o${lastNumber + 1}`;
+    }
+    return "o1";
+  } catch (error) {
+    console.error("Error generating order ID:", error);
+    return `o${Date.now()}`;
+  }
+}
+
 // Customer flow states
 const CUSTOMER_FLOW_STATES = {
   // Create customer flow
@@ -119,6 +154,25 @@ const PRODUCT_FLOW_STATES = {
 
   // Delete product flow
   DELETE_SELECT_PRODUCT: "delete_select_product",
+  DELETE_CONFIRM: "delete_confirm",
+
+  COMPLETED: "completed",
+};
+
+// Order flow states
+const ORDER_FLOW_STATES = {
+  // Create order flow
+  CREATE_SELECT_CUSTOMER: "create_select_customer",
+  CREATE_ADD_PRODUCTS: "create_add_products",
+  CREATE_ENTER_QUANTITY: "create_enter_quantity",
+  CREATE_ADD_MORE: "create_add_more",
+  CREATE_CONFIRM_DETAILS: "create_confirm_details",
+
+  // View order flow
+  VIEW_SELECT_ORDER: "view_select_order",
+
+  // Delete order flow
+  DELETE_SELECT_ORDER: "delete_select_order",
   DELETE_CONFIRM: "delete_confirm",
 
   COMPLETED: "completed",
@@ -308,6 +362,91 @@ function parseProductCommand(text, context = null) {
   return null;
 }
 
+// Parse order commands
+function parseOrderCommand(text, context = null) {
+  const lowerText = text.toLowerCase().trim();
+  console.log("Parsing order command:", text, "Context:", context);
+
+  // Handle conversational flows FIRST (most important)
+  if (context && context.flowState && context.domain === "order") {
+    return handleOrderFlow(text, context);
+  }
+
+  // DELETE order commands - HIGH PRIORITY
+  const deleteMatch = lowerText.match(
+    /^(?:delete|remove|cancel)\s+order\s+(.+)$/i
+  );
+  if (deleteMatch) {
+    const orderIdentifier = deleteMatch[1].trim();
+    return {
+      intent: "delete_order",
+      orderIdentifier: orderIdentifier,
+      response: `⚠️ Are you sure you want to delete order "${orderIdentifier}"? This cannot be undone.`,
+      flowState: ORDER_FLOW_STATES.DELETE_CONFIRM,
+      actionType: "delete_order",
+      needsConfirmation: true,
+      domain: "order",
+    };
+  }
+
+  // CREATE order commands - MEDIUM PRIORITY
+  const createMatch =
+    lowerText.match(
+      /^(?:create|add|make)\s+(?:a\s+)?order\s+(?:for\s+)?(.+)$/i
+    ) || lowerText.match(/^(?:new\s+)?order\s+(?:for\s+)?(.+)$/i);
+  if (createMatch) {
+    const customerIdentifier = createMatch[1].trim();
+    return {
+      intent: "create_order",
+      customerIdentifier: customerIdentifier,
+      response: `🛒 Great! Let's create an order for customer "${customerIdentifier}". Let me find this customer...`,
+      flowState: ORDER_FLOW_STATES.CREATE_SELECT_CUSTOMER,
+      actionType: "create_order",
+      domain: "order",
+    };
+  }
+
+  // List orders command
+  if (lowerText.match(/^(?:list|show|view)\s+orders$/i)) {
+    return {
+      intent: "list_orders",
+      response: "📋 Let me fetch the list of orders...",
+      actionType: "list_orders",
+      domain: "order",
+    };
+  }
+
+  // View specific order
+  const viewMatch = lowerText.match(/^(?:view|show|get)\s+order\s+(.+)$/i);
+  if (viewMatch) {
+    const orderIdentifier = viewMatch[1].trim();
+    return {
+      intent: "view_order",
+      orderIdentifier: orderIdentifier,
+      response: `🔍 Let me get details for order "${orderIdentifier}"...`,
+      actionType: "view_order",
+      domain: "order",
+    };
+  }
+
+  // View customer orders
+  const customerOrdersMatch = lowerText.match(
+    /^(?:view|show|list)\s+orders\s+(?:for|of)\s+(.+)$/i
+  );
+  if (customerOrdersMatch) {
+    const customerIdentifier = customerOrdersMatch[1].trim();
+    return {
+      intent: "view_customer_orders",
+      customerIdentifier: customerIdentifier,
+      response: `📋 Let me fetch orders for customer "${customerIdentifier}"...`,
+      actionType: "view_customer_orders",
+      domain: "order",
+    };
+  }
+
+  return null;
+}
+
 // Main command parser
 function parseCommand(text, context = null) {
   // Try customer commands first
@@ -322,11 +461,17 @@ function parseCommand(text, context = null) {
     return productPlan;
   }
 
+  // Try order commands third
+  const orderPlan = parseOrderCommand(text, context);
+  if (orderPlan && orderPlan.intent !== "unknown") {
+    return orderPlan;
+  }
+
   // Default response
   return {
     intent: "unknown",
     response:
-      "I can help you with customer or product management. Try:\n\n**Customers:**\n• 'Create customer John'\n• 'Edit customer c1'  \n• 'Delete customer c2'\n• 'List customers'\n• 'View customer c1'\n\n**Products:**\n• 'Create product Laptop'\n• 'Edit product p1'\n• 'Delete product p2'\n• 'List products'\n• 'View product p1'",
+      "I can help you with customer, product, or order management. Try:\n\n**Customers:**\n• 'Create customer John'\n• 'Edit customer c1'  \n• 'Delete customer c2'\n• 'List customers'\n• 'View customer c1'\n\n**Products:**\n• 'Create product Laptop'\n• 'Edit product p1'\n• 'Delete product p2'\n• 'List products'\n• 'View product p1'\n\n**Orders:**\n• 'Create order for c1'\n• 'View order o1'\n• 'Delete order o2'\n• 'List orders'\n• 'View orders for c1'",
     actionType: "unknown",
   };
 }
@@ -682,6 +827,164 @@ function handleProductFlow(text, context) {
   }
 }
 
+// Handle order conversational flows
+function handleOrderFlow(text, context) {
+  const lowerText = text.toLowerCase().trim();
+
+  switch (context.flowState) {
+    // CREATE ORDER FLOW - Select customer
+    case ORDER_FLOW_STATES.CREATE_SELECT_CUSTOMER:
+      // Customer should already be found in the main endpoint
+      return {
+        intent: "create_order",
+        response: `👤 Order for ${context.customerData.name}. Now let's add products. Which product would you like to add? (use product ID or name)`,
+        flowState: ORDER_FLOW_STATES.CREATE_ADD_PRODUCTS,
+        orderData: {
+          customerId: context.customerData.id,
+          customerName: context.customerData.name,
+          items: [],
+        },
+        actionType: "create_order",
+        domain: "order",
+      };
+
+    // CREATE ORDER FLOW - Add products
+    case ORDER_FLOW_STATES.CREATE_ADD_PRODUCTS:
+      // Find the product
+      return {
+        intent: "create_order",
+        response: `📦 Adding "${text}". How many would you like to order?`,
+        flowState: ORDER_FLOW_STATES.CREATE_ENTER_QUANTITY,
+        productIdentifier: text.trim(),
+        orderData: context.orderData,
+        actionType: "create_order",
+        domain: "order",
+      };
+
+    // CREATE ORDER FLOW - Enter quantity
+    case ORDER_FLOW_STATES.CREATE_ENTER_QUANTITY:
+      const quantity = parseInt(text.trim());
+      if (isNaN(quantity) || quantity <= 0) {
+        return {
+          intent: "create_order",
+          response: "Please provide a valid quantity (e.g., 2)",
+          flowState: ORDER_FLOW_STATES.CREATE_ENTER_QUANTITY,
+          orderData: context.orderData,
+          productIdentifier: context.productIdentifier,
+          actionType: "create_order",
+          domain: "order",
+        };
+      }
+
+      // Add product to order
+      const updatedItems = [...(context.orderData.items || [])];
+      const product = context.productData;
+
+      if (product) {
+        updatedItems.push({
+          productId: product.id,
+          productName: product.name,
+          qty: quantity,
+          price: product.price,
+          subtotal: product.price * quantity,
+        });
+      }
+
+      const updatedOrderData = {
+        ...context.orderData,
+        items: updatedItems,
+      };
+
+      // Calculate total
+      const total = updatedItems.reduce((sum, item) => sum + item.subtotal, 0);
+      updatedOrderData.total = total;
+
+      const itemsList = updatedItems
+        .map(
+          (item) =>
+            `  • ${item.productName} × ${item.qty} = $${item.subtotal.toFixed(
+              2
+            )}`
+        )
+        .join("\n");
+
+      return {
+        intent: "create_order",
+        response: `✅ Added ${quantity} × ${
+          context.productData.name
+        }. Current order:\n\n${itemsList}\n\n💰 Total: $${total.toFixed(
+          2
+        )}\n\nWould you like to add another product? (yes/no)`,
+        flowState: ORDER_FLOW_STATES.CREATE_ADD_MORE,
+        orderData: updatedOrderData,
+        actionType: "create_order",
+        domain: "order",
+      };
+
+    // CREATE ORDER FLOW - Add more products
+    case ORDER_FLOW_STATES.CREATE_ADD_MORE:
+      if (
+        lowerText === "yes" ||
+        lowerText === "y" ||
+        lowerText === "add more"
+      ) {
+        return {
+          intent: "create_order",
+          response:
+            "Which product would you like to add? (use product ID or name)",
+          flowState: ORDER_FLOW_STATES.CREATE_ADD_PRODUCTS,
+          orderData: context.orderData,
+          actionType: "create_order",
+          domain: "order",
+        };
+      } else if (
+        lowerText === "no" ||
+        lowerText === "n" ||
+        lowerText === "done"
+      ) {
+        const itemsList = context.orderData.items
+          .map(
+            (item) =>
+              `  • ${item.productName} × ${item.qty} = $${item.subtotal.toFixed(
+                2
+              )}`
+          )
+          .join("\n");
+
+        return {
+          intent: "create_order",
+          response: `✅ Perfect! Let me confirm the order details:\n\n📋 Order for ${
+            context.orderData.customerName
+          }\n\nItems:\n${itemsList}\n\n💰 Total: $${context.orderData.total.toFixed(
+            2
+          )}\n\nShould I create this order?`,
+          flowState: ORDER_FLOW_STATES.CREATE_CONFIRM_DETAILS,
+          orderData: context.orderData,
+          actionType: "create_order",
+          domain: "order",
+          needsConfirmation: true,
+        };
+      } else {
+        return {
+          intent: "create_order",
+          response:
+            "Please answer 'yes' to add more products or 'no' to finish the order.",
+          flowState: ORDER_FLOW_STATES.CREATE_ADD_MORE,
+          orderData: context.orderData,
+          actionType: "create_order",
+          domain: "order",
+        };
+      }
+
+    default:
+      return {
+        intent: "unknown",
+        response: "I'm not sure what you want to do. Let's start over.",
+        actionType: "unknown",
+      };
+  }
+}
+
 // Find customer by ID or name
 async function findCustomer(identifier) {
   if (!identifier) {
@@ -766,6 +1069,41 @@ async function findProduct(identifier) {
   }
 }
 
+// Find order by ID
+async function findOrder(identifier) {
+  if (!identifier) {
+    console.log("❌ No identifier provided to findOrder");
+    return null;
+  }
+
+  console.log("🔍 Finding order with identifier:", identifier);
+
+  try {
+    const order = await prisma.order.findUnique({
+      where: { id: identifier },
+      include: {
+        customer: true,
+        items: {
+          include: {
+            product: true,
+          },
+        },
+      },
+    });
+
+    if (order) {
+      console.log("✅ Found order by ID:", order.id);
+    } else {
+      console.log("❌ Order not found:", identifier);
+    }
+
+    return order;
+  } catch (error) {
+    console.error("❌ Error finding order:", error);
+    return null;
+  }
+}
+
 // Main command endpoint
 router.post("/", async (req, res) => {
   try {
@@ -782,8 +1120,10 @@ router.post("/", async (req, res) => {
       );
       const isEditFlow =
         context.flowState && context.flowState.includes("edit_");
+      const isOrderFlow =
+        context.flowState && context.flowState.includes("create_");
 
-      if (!isContinuation && !isEditFlow) {
+      if (!isContinuation && !isEditFlow && !isOrderFlow) {
         console.log("🔄 Clearing old conversation for new command");
         conversationStore.delete(conversationId);
         context = null;
@@ -1085,8 +1425,186 @@ router.post("/", async (req, res) => {
 
         responseData.data = { product: product };
       }
+    }
+    // ORDER INTENTS
+    else if (plan.intent === "create_order") {
+      if (!newConversationId) {
+        newConversationId = generateConversationId();
+      }
+
+      let customer;
+
+      if (context && context.customerData) {
+        // Use customer from existing context
+        customer = context.customerData;
+        console.log("✅ Using customer from context:", customer.name);
+      } else {
+        // Find the customer for the order
+        customer = await findCustomer(plan.customerIdentifier);
+        if (!customer) {
+          return res.json({
+            response: `❌ Customer "${plan.customerIdentifier}" not found.`,
+            actionType: "create_order",
+          });
+        }
+        console.log("✅ Found customer for order:", customer.name);
+      }
+
+      const updatedContext = {
+        flowState: plan.flowState,
+        customerData: customer,
+        orderData: plan.orderData || {
+          customerId: customer.id,
+          customerName: customer.name,
+          items: [],
+        },
+        intent: "create_order",
+        actionType: "create_order",
+        domain: "order",
+      };
+
+      conversationStore.set(newConversationId, updatedContext);
+      responseData.conversationId = newConversationId;
+      responseData.customerData = customer;
+      responseData.orderData = updatedContext.orderData;
+    } else if (plan.intent === "delete_order") {
+      if (!newConversationId) {
+        newConversationId = generateConversationId();
+      }
+
+      // Find the order to delete
+      const order = await findOrder(plan.orderIdentifier);
+      if (!order) {
+        return res.json({
+          response: `❌ Order "${plan.orderIdentifier}" not found.`,
+          actionType: "delete_order",
+        });
+      }
+
+      const updatedContext = {
+        flowState: plan.flowState,
+        orderData: order,
+        intent: "delete_order",
+        actionType: "delete_order",
+        domain: "order",
+      };
+
+      conversationStore.set(newConversationId, updatedContext);
+      responseData.conversationId = newConversationId;
+      responseData.orderData = order;
+      responseData.needsConfirmation = true;
+    } else if (plan.intent === "list_orders") {
+      const orders = await prisma.order.findMany({
+        orderBy: { createdAt: "desc" },
+        include: {
+          customer: true,
+          items: {
+            include: {
+              product: true,
+            },
+          },
+        },
+        take: 20, // Limit to recent orders
+      });
+
+      if (orders.length === 0) {
+        responseData.response = "📋 No orders found.";
+      } else {
+        const orderList = orders
+          .map(
+            (order) =>
+              `• Order ${order.id} - Customer: ${
+                order.customer.name
+              } - Total: $${order.total.toFixed(2)} - Items: ${
+                order.items.length
+              } - Date: ${order.createdAt.toLocaleDateString()}`
+          )
+          .join("\n");
+
+        responseData.response = `📋 Recent Orders (${orders.length}):\n\n${orderList}`;
+        responseData.data = { orders: orders };
+      }
+    } else if (plan.intent === "view_order") {
+      // Find the order to view
+      const order = await findOrder(plan.orderIdentifier);
+      if (!order) {
+        responseData.response = `❌ Order "${plan.orderIdentifier}" not found.`;
+      } else {
+        const itemsList = order.items
+          .map(
+            (item) =>
+              `  • ${item.product.name} × ${item.qty} = $${(
+                item.price * item.qty
+              ).toFixed(2)}`
+          )
+          .join("\n");
+
+        responseData.response =
+          `📋 Order Details:\n\n` +
+          `• ID: ${order.id}\n` +
+          `• Customer: ${order.customer.name} (${order.customer.id})\n` +
+          `• Total: $${order.total.toFixed(2)}\n` +
+          `• Items: ${order.items.length}\n` +
+          `• Date: ${order.createdAt.toLocaleDateString()}\n\n` +
+          `Items:\n${itemsList}`;
+
+        responseData.data = { order: order };
+      }
+    } else if (plan.intent === "view_customer_orders") {
+      // Find customer and their orders
+      const customer = await findCustomer(plan.customerIdentifier);
+      if (!customer) {
+        responseData.response = `❌ Customer "${plan.customerIdentifier}" not found.`;
+      } else {
+        const orders = await prisma.order.findMany({
+          where: { customerId: customer.id },
+          include: {
+            items: {
+              include: {
+                product: true,
+              },
+            },
+          },
+          orderBy: { createdAt: "desc" },
+        });
+
+        if (orders.length === 0) {
+          responseData.response = `📋 No orders found for customer "${customer.name}".`;
+        } else {
+          const orderList = orders
+            .map(
+              (order) =>
+                `• Order ${order.id} - Total: $${order.total.toFixed(
+                  2
+                )} - Items: ${
+                  order.items.length
+                } - Date: ${order.createdAt.toLocaleDateString()}`
+            )
+            .join("\n");
+
+          responseData.response = `📋 Orders for ${customer.name} (${orders.length}):\n\n${orderList}`;
+          responseData.data = { customer: customer, orders: orders };
+        }
+      }
     } else if (plan.intent === "unknown") {
       responseData.response = plan.response;
+    }
+
+    // Handle product lookup for order flow
+    if (plan.intent === "create_order" && plan.productIdentifier) {
+      const product = await findProduct(plan.productIdentifier);
+      if (!product) {
+        responseData.response = `❌ Product "${plan.productIdentifier}" not found. Please try again.`;
+        responseData.conversationId = newConversationId;
+      } else {
+        // Update context with product data
+        const currentContext = conversationStore.get(newConversationId);
+        if (currentContext) {
+          currentContext.productData = product;
+          conversationStore.set(newConversationId, currentContext);
+        }
+        responseData.productData = product;
+      }
     }
 
     console.log("📤 Sending response:", responseData);
@@ -1107,7 +1625,7 @@ router.post("/", async (req, res) => {
   }
 });
 
-// Confirmation endpoint - FIXED FOR BOTH CUSTOMER AND PRODUCT
+// Confirmation endpoint - FIXED FOR CUSTOMER, PRODUCT AND ORDER
 router.post("/confirm", async (req, res) => {
   try {
     console.log("✅ Confirm request:", req.body);
@@ -1118,6 +1636,7 @@ router.post("/confirm", async (req, res) => {
       actionType,
       customerData,
       productData,
+      orderData,
       fieldToEdit,
     } = ConfirmRequestSchema.parse(req.body);
     const context = conversationStore.get(conversationId);
@@ -1311,6 +1830,105 @@ router.post("/confirm", async (req, res) => {
       conversationStore.delete(conversationId);
       response = `✅ Product "${productDataToUse.name}" (ID: ${productDataToUse.id}) has been deleted successfully.`;
       data = { deletedProduct: productDataToUse };
+    }
+    // ORDER ACTIONS
+    else if (actionType === "create_order") {
+      const orderDataToUse = orderData || context.orderData;
+
+      // Create the order
+      const orderId = await generateNextOrderId();
+
+      // Create order first
+      const newOrder = await prisma.order.create({
+        data: {
+          id: orderId,
+          customerId: orderDataToUse.customerId,
+          total: orderDataToUse.total,
+        },
+      });
+
+      // Create order items
+      for (const item of orderDataToUse.items) {
+        await prisma.orderItem.create({
+          data: {
+            orderId: newOrder.id,
+            productId: item.productId,
+            qty: item.qty,
+            price: item.price,
+          },
+        });
+
+        // Update product stock
+        await prisma.product.update({
+          where: { id: item.productId },
+          data: {
+            stock: {
+              decrement: item.qty,
+            },
+          },
+        });
+      }
+
+      // Fetch the complete order with relationships
+      const completeOrder = await prisma.order.findUnique({
+        where: { id: newOrder.id },
+        include: {
+          customer: true,
+          items: {
+            include: {
+              product: true,
+            },
+          },
+        },
+      });
+
+      const itemsList = completeOrder.items
+        .map(
+          (item) =>
+            `  • ${item.product.name} × ${item.qty} = $${(
+              item.price * item.qty
+            ).toFixed(2)}`
+        )
+        .join("\n");
+
+      conversationStore.delete(conversationId);
+      response = `✅ Order created successfully!\n\n📋 Order Details:\n• ID: ${
+        completeOrder.id
+      }\n• Customer: ${
+        completeOrder.customer.name
+      }\n• Total: $${completeOrder.total.toFixed(2)}\n• Items: ${
+        completeOrder.items.length
+      }\n\nItems:\n${itemsList}`;
+      data = { order: completeOrder };
+    } else if (actionType === "delete_order") {
+      const orderDataToUse = orderData || context.orderData;
+
+      // First, restore product stock from order items
+      const orderItems = await prisma.orderItem.findMany({
+        where: { orderId: orderDataToUse.id },
+        include: { product: true },
+      });
+
+      // Restore stock for each product
+      for (const item of orderItems) {
+        await prisma.product.update({
+          where: { id: item.productId },
+          data: {
+            stock: {
+              increment: item.qty,
+            },
+          },
+        });
+      }
+
+      // Delete order (cascading delete will handle order items)
+      await prisma.order.delete({
+        where: { id: orderDataToUse.id },
+      });
+
+      conversationStore.delete(conversationId);
+      response = `✅ Order "${orderDataToUse.id}" has been deleted successfully. Product stock has been restored.`;
+      data = { deletedOrder: orderDataToUse };
     } else {
       response = `✅ Action completed: ${actionType}`;
       conversationStore.delete(conversationId);
@@ -1343,6 +1961,7 @@ router.get("/health", (req, res) => {
       domain: context.domain,
       customerName: context.customerData?.name,
       productName: context.productData?.name,
+      orderId: context.orderData?.id,
     })
   );
 
@@ -1350,7 +1969,7 @@ router.get("/health", (req, res) => {
     status: "ok",
     activeConversations: activeConversations,
     totalConversations: conversationStore.size,
-    message: "Customer and product management service is running",
+    message: "Customer, product, and order management service is running",
   });
 });
 
