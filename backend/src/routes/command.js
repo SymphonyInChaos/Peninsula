@@ -8,9 +8,12 @@ const router = Router();
 // In-memory conversation store
 const conversationStore = new Map();
 
-// Schemas
+// Enhanced Schemas with comprehensive validation
 const CommandRequestSchema = z.object({
-  text: z.string().min(1, "Command text cannot be empty."),
+  text: z
+    .string()
+    .min(1, "Command text cannot be empty.")
+    .max(500, "Command too long"),
   conversationId: z.string().optional().nullable(),
 });
 
@@ -21,18 +24,38 @@ const ConfirmRequestSchema = z.object({
   customerData: z
     .object({
       id: z.string().optional(),
-      name: z.string().optional(),
-      email: z.string().optional().nullable(),
-      phone: z.string().optional().nullable(),
+      name: z
+        .string()
+        .min(1, "Name is required")
+        .max(100, "Name too long")
+        .optional(),
+      email: z.string().email("Invalid email format").optional().nullable(),
+      phone: z.string().max(20, "Phone number too long").optional().nullable(),
     })
     .optional(),
   productData: z
     .object({
       id: z.string().optional(),
-      name: z.string().optional(),
-      description: z.string().optional().nullable(),
-      price: z.number().optional(),
-      stock: z.number().optional(),
+      name: z
+        .string()
+        .min(1, "Name is required")
+        .max(100, "Name too long")
+        .optional(),
+      description: z
+        .string()
+        .max(500, "Description too long")
+        .optional()
+        .nullable(),
+      price: z
+        .number()
+        .positive("Price must be positive")
+        .min(0.01, "Price must be at least 0.01")
+        .optional(),
+      stock: z
+        .number()
+        .int("Stock must be an integer")
+        .min(0, "Stock cannot be negative")
+        .optional(),
     })
     .optional(),
   orderData: z
@@ -43,12 +66,16 @@ const ConfirmRequestSchema = z.object({
         .array(
           z.object({
             productId: z.string(),
-            qty: z.number(),
-            price: z.number(),
+            qty: z
+              .number()
+              .int("Quantity must be an integer")
+              .min(1, "Quantity must be at least 1"),
+            price: z.number().positive("Price must be positive"),
           })
         )
+        .min(1, "Order must have at least one item")
         .optional(),
-      total: z.number().optional(),
+      total: z.number().positive("Total must be positive").optional(),
     })
     .optional(),
   fieldToEdit: z.string().optional(),
@@ -598,8 +625,33 @@ function handleCustomerFlow(text, context) {
       }
 
     case CUSTOMER_FLOW_STATES.EDIT_ENTER_NEW_VALUE:
-      const newValue = text.trim();
+      let newValue = text.trim();
       const oldValue = context.customerData[context.fieldToEdit];
+
+      // Validate email if editing email field
+      if (
+        context.fieldToEdit === "email" &&
+        newValue.toLowerCase() !== "skip"
+      ) {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(newValue)) {
+          return {
+            intent: "edit_customer",
+            response:
+              "That doesn't look like a valid email. Please provide a valid email or type 'skip' to remove it.",
+            flowState: CUSTOMER_FLOW_STATES.EDIT_ENTER_NEW_VALUE,
+            customerData: context.customerData,
+            fieldToEdit: context.fieldToEdit,
+            actionType: "edit_customer",
+            domain: "customer",
+          };
+        }
+      }
+
+      // Handle "skip" for optional fields
+      if (newValue.toLowerCase() === "skip") {
+        newValue = null;
+      }
 
       // Create updated customer data
       const updatedCustomerData = {
@@ -611,7 +663,7 @@ function handleCustomerFlow(text, context) {
         intent: "edit_customer",
         response: `Confirm change:\n${context.fieldToEdit}: "${
           oldValue || "Not set"
-        }" → "${newValue}"\n\nShould I update this customer?`,
+        }" → "${newValue || "Not set"}"\n\nShould I update this customer?`,
         flowState: CUSTOMER_FLOW_STATES.EDIT_CONFIRM_CHANGE,
         customerData: updatedCustomerData,
         fieldToEdit: context.fieldToEdit,
@@ -668,10 +720,11 @@ function handleProductFlow(text, context) {
 
     case PRODUCT_FLOW_STATES.CREATE_ASK_PRICE:
       const price = parseFloat(text.trim());
-      if (isNaN(price) || price < 0) {
+      if (isNaN(price) || price < 0.01) {
         return {
           intent: "create_product",
-          response: "Please provide a valid price (e.g., 99.99)",
+          response:
+            "Please provide a valid price (e.g., 99.99) - must be at least 0.01",
           flowState: PRODUCT_FLOW_STATES.CREATE_ASK_PRICE,
           productData: context.productData,
           actionType: "create_product",
@@ -698,7 +751,8 @@ function handleProductFlow(text, context) {
       if (isNaN(stock) || stock < 0) {
         return {
           intent: "create_product",
-          response: "Please provide a valid stock quantity (e.g., 100)",
+          response:
+            "Please provide a valid stock quantity (e.g., 100) - cannot be negative",
           flowState: PRODUCT_FLOW_STATES.CREATE_ASK_STOCK,
           productData: context.productData,
           actionType: "create_product",
@@ -756,13 +810,14 @@ function handleProductFlow(text, context) {
       let newValue = text.trim();
       const oldValue = context.productData[context.fieldToEdit];
 
-      // Handle numeric fields
+      // Handle numeric fields with validation
       if (context.fieldToEdit === "price") {
         const priceValue = parseFloat(newValue);
-        if (isNaN(priceValue) || priceValue < 0) {
+        if (isNaN(priceValue) || priceValue < 0.01) {
           return {
             intent: "edit_product",
-            response: "Please provide a valid price (e.g., 99.99)",
+            response:
+              "Please provide a valid price (e.g., 99.99) - must be at least 0.01",
             flowState: PRODUCT_FLOW_STATES.EDIT_ENTER_NEW_VALUE,
             productData: context.productData,
             fieldToEdit: context.fieldToEdit,
@@ -776,7 +831,8 @@ function handleProductFlow(text, context) {
         if (isNaN(stockValue) || stockValue < 0) {
           return {
             intent: "edit_product",
-            response: "Please provide a valid stock quantity (e.g., 100)",
+            response:
+              "Please provide a valid stock quantity (e.g., 100) - cannot be negative",
             flowState: PRODUCT_FLOW_STATES.EDIT_ENTER_NEW_VALUE,
             productData: context.productData,
             fieldToEdit: context.fieldToEdit,
@@ -785,6 +841,11 @@ function handleProductFlow(text, context) {
           };
         }
         newValue = stockValue;
+      } else if (
+        context.fieldToEdit === "description" &&
+        newValue.toLowerCase() === "skip"
+      ) {
+        newValue = null;
       }
 
       // Create updated product data
@@ -805,7 +866,7 @@ function handleProductFlow(text, context) {
           ? `$${newValue.toFixed(2)}`
           : context.fieldToEdit === "stock"
           ? newValue
-          : newValue;
+          : newValue || "Not set";
 
       return {
         intent: "edit_product",
@@ -867,7 +928,21 @@ function handleOrderFlow(text, context) {
       if (isNaN(quantity) || quantity <= 0) {
         return {
           intent: "create_order",
-          response: "Please provide a valid quantity (e.g., 2)",
+          response:
+            "Please provide a valid quantity (e.g., 2) - must be at least 1",
+          flowState: ORDER_FLOW_STATES.CREATE_ENTER_QUANTITY,
+          orderData: context.orderData,
+          productIdentifier: context.productIdentifier,
+          actionType: "create_order",
+          domain: "order",
+        };
+      }
+
+      // Check stock availability
+      if (context.productData.stock < quantity) {
+        return {
+          intent: "create_order",
+          response: `❌ Insufficient stock! Only ${context.productData.stock} available, but you requested ${quantity}. Please enter a smaller quantity.`,
           flowState: ORDER_FLOW_STATES.CREATE_ENTER_QUANTITY,
           orderData: context.orderData,
           productIdentifier: context.productIdentifier,
@@ -1102,6 +1177,98 @@ async function findOrder(identifier) {
     console.error("❌ Error finding order:", error);
     return null;
   }
+}
+
+// Validate customer data before creation/update
+async function validateCustomerData(customerData, existingCustomerId = null) {
+  const errors = [];
+
+  // Check for duplicate email
+  if (customerData.email) {
+    const existingCustomer = await prisma.customer.findFirst({
+      where: {
+        email: customerData.email,
+        ...(existingCustomerId && { NOT: { id: existingCustomerId } }),
+      },
+    });
+    if (existingCustomer) {
+      errors.push(
+        `Email "${customerData.email}" already exists for customer ${existingCustomer.name}`
+      );
+    }
+  }
+
+  // Check for duplicate phone
+  if (customerData.phone) {
+    const existingCustomer = await prisma.customer.findFirst({
+      where: {
+        phone: customerData.phone,
+        ...(existingCustomerId && { NOT: { id: existingCustomerId } }),
+      },
+    });
+    if (existingCustomer) {
+      errors.push(
+        `Phone "${customerData.phone}" already exists for customer ${existingCustomer.name}`
+      );
+    }
+  }
+
+  return errors;
+}
+
+// Validate product data before creation/update
+async function validateProductData(productData, existingProductId = null) {
+  const errors = [];
+
+  // Check for duplicate product name
+  if (productData.name) {
+    const existingProduct = await prisma.product.findFirst({
+      where: {
+        name: {
+          equals: productData.name,
+          mode: "insensitive",
+        },
+        ...(existingProductId && { NOT: { id: existingProductId } }),
+      },
+    });
+    if (existingProduct) {
+      errors.push(`Product name "${productData.name}" already exists`);
+    }
+  }
+
+  return errors;
+}
+
+// Validate order data before creation
+async function validateOrderData(orderData) {
+  const errors = [];
+
+  // Check if customer exists
+  if (orderData.customerId) {
+    const customer = await prisma.customer.findUnique({
+      where: { id: orderData.customerId },
+    });
+    if (!customer) {
+      errors.push(`Customer with ID "${orderData.customerId}" not found`);
+    }
+  }
+
+  // Check if all products exist and have sufficient stock
+  for (const item of orderData.items) {
+    const product = await prisma.product.findUnique({
+      where: { id: item.productId },
+    });
+
+    if (!product) {
+      errors.push(`Product with ID "${item.productId}" not found`);
+    } else if (product.stock < item.qty) {
+      errors.push(
+        `Insufficient stock for "${product.name}": requested ${item.qty}, available ${product.stock}`
+      );
+    }
+  }
+
+  return errors;
 }
 
 // Main command endpoint
@@ -1370,6 +1537,19 @@ router.post("/", async (req, res) => {
       if (!product) {
         return res.json({
           response: `❌ Product "${plan.productIdentifier}" not found.`,
+          actionType: "delete_product",
+        });
+      }
+
+      // Check if product is in any orders
+      const orderItems = await prisma.orderItem.findMany({
+        where: { productId: product.id },
+        take: 1,
+      });
+
+      if (orderItems.length > 0) {
+        return res.json({
+          response: `❌ Cannot delete product "${product.name}" because it is used in existing orders.`,
           actionType: "delete_product",
         });
       }
@@ -1662,20 +1842,12 @@ router.post("/confirm", async (req, res) => {
     if (actionType === "create_customer") {
       const customerDataToUse = customerData || context.customerData;
 
-      // Check if customer already exists
-      const existingCustomer = await prisma.customer.findFirst({
-        where: {
-          name: {
-            equals: customerDataToUse.name,
-            mode: "insensitive",
-          },
-        },
-      });
-
-      if (existingCustomer) {
+      // Validate customer data
+      const validationErrors = await validateCustomerData(customerDataToUse);
+      if (validationErrors.length > 0) {
         conversationStore.delete(conversationId);
         return res.json({
-          response: `❌ Customer "${customerDataToUse.name}" already exists with ID: ${existingCustomer.id}`,
+          response: `❌ Validation failed:\n${validationErrors.join("\n")}`,
         });
       }
 
@@ -1709,6 +1881,18 @@ router.post("/confirm", async (req, res) => {
           context.originalCustomerData?.[field] || customerDataToUse[field],
         newValue: newValue,
       });
+
+      // Validate customer data
+      const validationErrors = await validateCustomerData(
+        customerDataToUse,
+        customerDataToUse.id
+      );
+      if (validationErrors.length > 0) {
+        conversationStore.delete(conversationId);
+        return res.json({
+          response: `❌ Validation failed:\n${validationErrors.join("\n")}`,
+        });
+      }
 
       // Build update data object
       const updateData = {};
@@ -1746,20 +1930,12 @@ router.post("/confirm", async (req, res) => {
     else if (actionType === "create_product") {
       const productDataToUse = productData || context.productData;
 
-      // Check if product already exists
-      const existingProduct = await prisma.product.findFirst({
-        where: {
-          name: {
-            equals: productDataToUse.name,
-            mode: "insensitive",
-          },
-        },
-      });
-
-      if (existingProduct) {
+      // Validate product data
+      const validationErrors = await validateProductData(productDataToUse);
+      if (validationErrors.length > 0) {
         conversationStore.delete(conversationId);
         return res.json({
-          response: `❌ Product "${productDataToUse.name}" already exists with ID: ${existingProduct.id}`,
+          response: `❌ Validation failed:\n${validationErrors.join("\n")}`,
         });
       }
 
@@ -1796,6 +1972,18 @@ router.post("/confirm", async (req, res) => {
           context.originalProductData?.[field] || productDataToUse[field],
         newValue: newValue,
       });
+
+      // Validate product data
+      const validationErrors = await validateProductData(
+        productDataToUse,
+        productDataToUse.id
+      );
+      if (validationErrors.length > 0) {
+        conversationStore.delete(conversationId);
+        return res.json({
+          response: `❌ Validation failed:\n${validationErrors.join("\n")}`,
+        });
+      }
 
       // Build update data object
       const updateData = {};
@@ -1834,6 +2022,15 @@ router.post("/confirm", async (req, res) => {
     // ORDER ACTIONS
     else if (actionType === "create_order") {
       const orderDataToUse = orderData || context.orderData;
+
+      // Validate order data
+      const validationErrors = await validateOrderData(orderDataToUse);
+      if (validationErrors.length > 0) {
+        conversationStore.delete(conversationId);
+        return res.json({
+          response: `❌ Validation failed:\n${validationErrors.join("\n")}`,
+        });
+      }
 
       // Create the order
       const orderId = await generateNextOrderId();
