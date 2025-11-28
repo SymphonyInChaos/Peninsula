@@ -1,79 +1,86 @@
-generator client {
-  provider = "prisma-client-js"
-}
-
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
-
-model User {
-  id             String   @id @default(uuid())
-  fname          String
-  lname          String
-  username       String   @unique
-  email          String   @unique
-  organization   String 
-  passwordHash   String
-
-
-  city           String?
-  country        String?
-  timezone       String?
-  phone          String?
-
-  plan_in_date   DateTime?
-  plan_out_date  DateTime?
-
-  last_logged_in   DateTime?
-  last_forgot_pass DateTime?
-
-  pass_attempt   Int      @default(0)
-  blocked        Boolean  @default(false)
-  status         String   @default("active")
-
-  latest_txn_id  String?
-
-  created_at      DateTime @default(now())
-  updated_at      DateTime @updatedAt
-}
-
-
+// Add to your existing schema
 model Product {
-  id        String   @id @default(uuid())
+  id        String   @id @default(cuid())
   name      String
   price     Float
   stock     Int
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   OrderItem OrderItem[]
+  
+  // Prevent negative stock at database level
+  @@map("products")
 }
 
 model Customer {
-  id        String   @id @default(uuid())
+  id        String   @id @default(cuid())
   name      String
   phone     String?
-  email     String?
-  orders    Order[]
+  email     String?  @unique  // Prevent duplicate emails
   createdAt DateTime @default(now())
+  orders    Order[]
+  
+  // Composite unique constraint for business rules
+  @@unique([phone, email])
+  @@map("customers")
 }
 
 model Order {
-  id          String      @id @default(uuid())
-  customerId  String?
-  customer    Customer?   @relation(fields: [customerId], references: [id])
-  total       Float
-  items       OrderItem[]
-  createdAt   DateTime    @default(now())
+  id         String      @id @default(cuid())
+  customerId String?
+  total      Float
+  createdAt  DateTime    @default(now())
+  customer   Customer?   @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  items      OrderItem[]
+  
+  @@map("orders")
 }
 
 model OrderItem {
-  id        String   @id @default(uuid())
+  id        String  @id @default(cuid())
   orderId   String
   productId String
   qty       Int
   price     Float
-  order     Order     @relation(fields: [orderId], references: [id])
-  product   Product   @relation(fields: [productId], references: [id])
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product   Product @relation(fields: [productId], references: [id])
+  
+  // Prevent duplicate products in same order
+  @@unique([orderId, productId])
+  @@map("order_items")
 }
 
+// NEW: Audit Log table
+model AuditLog {
+  id        String   @id @default(cuid())
+  action    String   // CREATE, UPDATE, DELETE
+  entity    String   // PRODUCT, CUSTOMER, ORDER
+  entityId  String
+  oldValues Json?
+  newValues Json?
+  userId    String?
+  userRole  String?
+  timestamp DateTime @default(now())
+  ipAddress String?
+  
+  @@map("audit_logs")
+}
+
+// NEW: User table for authentication
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  role      UserRole @default(STAFF)
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@map("users")
+}
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  STAFF
+}

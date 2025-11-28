@@ -1,5 +1,6 @@
 import { Router } from "express";
-import prisma from "../utils/db.js";
+import prisma, { validateOrder, OrderItemSchema } from "../utils/db.js";
+import { generateNextId } from "../utils/idGenerator.js";
 
 const router = Router();
 
@@ -74,7 +75,15 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ message: "Order items are invalid" });
     }
 
-    const productIds = [...new Set(normalizedItems.map((item) => item.productId))];
+    // Validate order structure
+    const validatedData = validateOrder({
+      customerId,
+      items: normalizedItems,
+    });
+
+    const productIds = [
+      ...new Set(validatedData.items.map((item) => item.productId)),
+    ];
 
     const products = await prisma.product.findMany({
       where: { id: { in: productIds } },
@@ -86,20 +95,57 @@ router.post("/", async (req, res) => {
         .json({ message: "One or more products are invalid" });
     }
 
-    const priceMap = new Map(products.map((product) => [product.id, product.price]));
+    // Check stock availability
+    const stockIssues = [];
+    for (const item of validatedData.items) {
+      const product = products.find((p) => p.id === item.productId);
+      if (product && product.stock < item.qty) {
+        stockIssues.push({
+          product: product.name,
+          requested: item.qty,
+          available: product.stock,
+        });
+      }
+    }
 
-    const total = normalizedItems.reduce(
+    if (stockIssues.length > 0) {
+      return res.status(400).json({
+        message: "Insufficient stock for some products",
+        stockIssues,
+      });
+    }
+
+    const priceMap = new Map(
+      products.map((product) => [product.id, product.price])
+    );
+
+    const total = validatedData.items.reduce(
       (acc, item) => acc + priceMap.get(item.productId) * item.qty,
       0
     );
 
+    const id = await generateNextId("o", "order");
+
     const order = await prisma.$transaction(async (tx) => {
+      // Update product stocks
+      for (const item of validatedData.items) {
+        await tx.product.update({
+          where: { id: item.productId },
+          data: {
+            stock: {
+              decrement: item.qty,
+            },
+          },
+        });
+      }
+
       return tx.order.create({
         data: {
-          customerId,
+          id,
+          customerId: validatedData.customerId,
           total,
           items: {
-            create: normalizedItems.map((item) => ({
+            create: validatedData.items.map((item) => ({
               qty: item.qty,
               price: priceMap.get(item.productId),
               product: {
@@ -114,6 +160,13 @@ router.post("/", async (req, res) => {
 
     res.status(201).json(order);
   } catch (error) {
+    if (error.name === "ZodError") {
+      return res.status(400).json({
+        message: "Validation failed",
+        errors: error.errors,
+      });
+    }
+
     console.error("Failed to create order", error);
     res.status(500).json({ message: "Failed to create order" });
   }
@@ -123,16 +176,34 @@ router.put("/:id", async (req, res) => {
   try {
     const { customerId, items } = req.body;
 
-    const normalizedItems =
-      items === undefined ? undefined : parseItems(items);
+    const normalizedItems = items === undefined ? undefined : parseItems(items);
 
-    if (items !== undefined && (!normalizedItems || normalizedItems.length === 0)) {
+    if (
+      items !== undefined &&
+      (!normalizedItems || normalizedItems.length === 0)
+    ) {
       return res.status(400).json({ message: "Order items are invalid" });
+    }
+
+    // Validate order structure if items are provided
+    if (normalizedItems) {
+      try {
+        validateOrder({
+          customerId: customerId !== undefined ? customerId : null,
+          items: normalizedItems,
+        });
+      } catch (validationError) {
+        return res.status(400).json({
+          message: "Validation failed",
+          errors: validationError.errors,
+        });
+      }
     }
 
     const order = await prisma.$transaction(async (tx) => {
       const existing = await tx.order.findUnique({
         where: { id: req.params.id },
+        include: { items: true },
       });
 
       if (!existing) {
@@ -158,6 +229,31 @@ router.put("/:id", async (req, res) => {
           throw new Error("INVALID_PRODUCTS");
         }
 
+        // Check stock availability (considering current order items)
+        const currentProductQtys = new Map();
+        for (const item of existing.items) {
+          currentProductQtys.set(item.productId, item.qty);
+        }
+
+        const stockIssues = [];
+        for (const item of normalizedItems) {
+          const product = products.find((p) => p.id === item.productId);
+          const currentQty = currentProductQtys.get(item.productId) || 0;
+          const stockChange = item.qty - currentQty;
+
+          if (product && product.stock < stockChange) {
+            stockIssues.push({
+              product: product.name,
+              requestedChange: stockChange,
+              available: product.stock,
+            });
+          }
+        }
+
+        if (stockIssues.length > 0) {
+          throw new Error("INSUFFICIENT_STOCK");
+        }
+
         const priceMap = new Map(
           products.map((product) => [product.id, product.price])
         );
@@ -166,6 +262,23 @@ router.put("/:id", async (req, res) => {
           (acc, item) => acc + priceMap.get(item.productId) * item.qty,
           0
         );
+
+        // Update product stocks
+        for (const item of normalizedItems) {
+          const currentQty = currentProductQtys.get(item.productId) || 0;
+          const stockChange = item.qty - currentQty;
+
+          if (stockChange !== 0) {
+            await tx.product.update({
+              where: { id: item.productId },
+              data: {
+                stock: {
+                  decrement: stockChange,
+                },
+              },
+            });
+          }
+        }
 
         await tx.orderItem.deleteMany({
           where: { orderId: req.params.id },
@@ -210,6 +323,12 @@ router.put("/:id", async (req, res) => {
         .json({ message: "One or more products are invalid" });
     }
 
+    if (error.message === "INSUFFICIENT_STOCK") {
+      return res
+        .status(400)
+        .json({ message: "Insufficient stock for updated quantities" });
+    }
+
     console.error("Failed to update order", error);
     res.status(500).json({ message: "Failed to update order" });
   }
@@ -217,8 +336,39 @@ router.put("/:id", async (req, res) => {
 
 router.delete("/:id", async (req, res) => {
   try {
-    await prisma.order.delete({
+    // First, check if order exists
+    const order = await prisma.order.findUnique({
       where: { id: req.params.id },
+      include: { items: true },
+    });
+
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    // Restore product stock and delete order
+    await prisma.$transaction(async (tx) => {
+      // Restore product stock
+      for (const item of order.items) {
+        await tx.product.update({
+          where: { id: item.productId },
+          data: {
+            stock: {
+              increment: item.qty,
+            },
+          },
+        });
+      }
+
+      // Delete all order items for this order
+      await tx.orderItem.deleteMany({
+        where: { orderId: req.params.id },
+      });
+
+      // Now delete the order
+      await tx.order.delete({
+        where: { id: req.params.id },
+      });
     });
 
     res.status(204).send();
