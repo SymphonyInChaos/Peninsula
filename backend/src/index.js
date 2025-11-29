@@ -10,6 +10,13 @@ import prisma from "./utils/db.js";
 import cors from "cors";
 
 const app = express();
+// ---- GLOBAL RATE LIMITER ----
+const globalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 500,
+  standardHeaders: true,
+  legacyHeaders: false
+});
 
 app.use(express.json());
 app.use(
