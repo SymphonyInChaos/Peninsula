@@ -18,7 +18,18 @@ import {
   Eye,
   HelpCircle,
   X,
+  Send,
+  Boxes,
+  Option,
+  PlusCircle,
+  ArrowBigDownDash,
+  ArrowDown,
+  ArrowUp,
+  AlertTriangle,
 } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
+import { GridPattern } from "@/components/ui/GridBg";
+import { cn } from "@/lib/utils";
 
 interface Message {
   id: string;
@@ -39,6 +50,7 @@ const PromptView = () => {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [showHelpModal, setShowHelpModal] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [showCommand , setShowCommand] = useState(false);
   const { toggleViewMode, logout } = useStore();
   const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
@@ -440,7 +452,7 @@ const PromptView = () => {
         className="bg-background rounded-2xl shadow-xl max-w-2xl w-full max-h-[80vh] overflow-hidden"
       >
         <div className="flex items-center justify-between p-6 border-b">
-          <h2 className="text-2xl font-bold">Available Commands</h2>
+          <h2 className="text-2xl font-thin">Available Commands</h2>
           <Button
             variant="ghost"
             size="icon"
@@ -455,7 +467,7 @@ const PromptView = () => {
           <div className="space-y-6">
             {/* Customer Commands */}
             <div>
-              <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+              <h3 className="text-lg font-thin mb-3 flex items-center gap-2">
                 <Users className="w-5 h-5 text-blue-500" />
                 Customer Management
               </h3>
@@ -649,9 +661,9 @@ const PromptView = () => {
           </div>
         </div>
 
-        <div className="flex justify-end p-6 border-t">
+        {/* <div className="flex justify-end p-6 border-t">
           <Button onClick={() => setShowHelpModal(false)}>Got it!</Button>
-        </div>
+        </div> */}
       </motion.div>
     </div>
   );
@@ -659,41 +671,49 @@ const PromptView = () => {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
-      <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-10">
+      <header className="border-b border-border bg-card/50 backdrop-blur-[2px] shadow-sm sticky top-0 z-10">
         <div className="container mx-auto px-4 sm:px-6 h-14 sm:h-16 flex items-center justify-between">
           <div className="flex items-center gap-2 sm:gap-3">
-            <div className="w-8 h-8 sm:w-10 sm:h-10 bg-primary rounded-xl flex items-center justify-center">
-              <Package className="w-4 h-4 sm:w-5 sm:h-5 text-primary-foreground" />
+            <div className="w-6 h-6 sm:w-8 sm:h-8 bg-primary  flex items-center justify-center">
+              <Boxes className="w-4 h-4 sm:w-5 sm:h-5 text-primary-foreground" />
             </div>
-            <h1 className="text-lg sm:text-xl font-light font-sans tracking-tight">
-              Peninsula AI Assistant
+            <h1 className="text-lg sm:text-xl font-light italic tracking-tight">
+              Peninsula
+              
             </h1>
           </div>
           <div className="flex items-center gap-2 sm:gap-3">
             <Button
               variant="outline"
               onClick={() => setShowHelpModal(true)}
-              className="rounded-2xl text-xs sm:text-sm px-3 sm:px-4"
+              className="text-center text-xs"
             >
-              <HelpCircle className="w-4 h-4 mr-2" />
+              <HelpCircle className="w-4 h-4" />
               <span className="hidden sm:inline">Help</span>
             </Button>
             <Button
               variant="outline"
               onClick={clearConversation}
-              className="rounded-2xl text-xs sm:text-sm px-3 sm:px-4"
+              className="  text-xs sm:text-sm px-3 sm:px-4"
               disabled={isProcessing}
             >
               Clear Chat
             </Button>
-            <Button
-              variant="outline"
-              onClick={toggleViewMode}
-              className="rounded-2xl text-xs sm:text-sm px-3 sm:px-4"
-            >
-              <span className="hidden sm:inline">Traditional View</span>
-              <span className="sm:hidden">Traditional</span>
-            </Button>
+           <Button
+  variant="outline"
+  onClick={toggleViewMode}
+  className="rounded-none text-xs sm:text-sm px-3 sm:px-4
+             bg-gradient-to-br from-blue-300 via-white to-blue-200
+             hover:bg-gradient-to-tl hover:from-blue-200 hover:via-white hover:to-blue-300
+             border border-blue-400 hover:border-blue-300
+             shadow-sm hover:shadow-md
+             transition-all ease-in-out duration-300
+             italic font-sans"
+>
+  <span className="hidden sm:inline">Traditional View</span>
+  <span className="sm:hidden">Traditional</span>
+</Button>
+
             <Button
               variant="ghost"
               size="icon"
@@ -707,61 +727,120 @@ const PromptView = () => {
       </header>
 
       {/* Chat Area */}
-      <div className="flex-1 container mx-auto px-4 sm:px-6 py-6 overflow-hidden">
-        <div className="max-w-3xl mx-auto h-full flex flex-col">
-          {/* Welcome Message */}
-          {messages.length === 0 && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="text-center space-y-4 py-12"
-            >
-              <div className="inline-flex items-center gap-2 px-4 py-2 bg-accent rounded-full text-sm text-accent-foreground">
-                <Sparkles className="w-4 h-4" />
-                <span>AI-Powered Assistant</span>
-              </div>
-              <h2 className="text-3xl sm:text-4xl font-bold">
-                Customer & Product Management
-              </h2>
-              <p className="text-muted-foreground text-lg">
-                Manage customers and products with natural language commands
-              </p>
-              <Button
-                onClick={() => setShowHelpModal(true)}
-                variant="outline"
-                className="mt-4"
-              >
-                <HelpCircle className="w-4 h-4 mr-2" />
-                View Available Commands
-              </Button>
-            </motion.div>
-          )}
+      <div className="flex flex-col">
+        {/* Chat Area */}
+        <div className="flex-1 container mx-auto px-4 sm:px-6 py-6 overflow-y-auto">
+          <div className="max-w-3xl mx-auto flex flex-col space-y-4  mb-24" >
 
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto space-y-4 mb-4">
-            {messages.map((message) => (
+            {/* Welcome Message */}
+            {messages.length === 0 && (
+              <motion.div
+                initial={{ opacity: 0, x: 10 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.5, ease: "easeOut" }}
+                className="text-center space-y-4 py-12"
+              >
+                <GridPattern
+        width={60}
+        height={60}
+        x={-1}
+        y={-1}
+        strokeDasharray={"4 4"}
+        className={cn(
+          "[mask-image:radial-gradient(400px_circle_at_center,green,transparent)]",
+        )}
+      />
+                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-md">
+                  <span className="italic text-black relative font-thin font-serif">
+                    <span className="font-semibold font-sans italic text-purple-700">AI powered</span> Assistant
+
+                    {/* Upward curved underline */}
+                    <svg
+                      className="absolute left-0 right-0 -bottom-1 mx-auto w-full h-2"
+                      viewBox="0 0 100 20"
+                      preserveAspectRatio="none"
+                    >
+                      <path
+                        d="M5 15 Q50 0 95 15"
+                        stroke="url(#grad)"
+                        strokeWidth="2"
+                        fill="transparent"
+                        strokeLinecap="round"
+                      />
+                      <defs>
+                        <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="0%">
+                          <stop offset="0%" stopColor="#cf86efff" />
+                          <stop offset="100%" stopColor="#291580ff" />
+                        </linearGradient>
+                      </defs>
+                    </svg>
+                  </span>
+                </div>
+
+
+
+                <h2 className="text-5xl sm:text-6xl font-thin tracking-wide">
+                  Everything <span className="font-mono font-semibold italic text-orange-500">at;</span> <br />One Command
+                </h2>
+                <p className="text-muted-foreground text-sm sm:text-md mt-2">
+                  The smartest way to manage customers and products in natural language — just type what you need.
+                </p>
+
+
+                <Button
+                  onClick={() => setShowHelpModal(true)}
+                  variant="outline"
+                  className="mt-4 font-light 
+           bg-gradient-to-br from-green-200 via-white to-green-100
+           hover:bg-gradient-to-tl hover:from-teal-100 hover:via-white hover:to-teal-200
+           border border-green-400
+           hover:border-teal-300
+           text-black
+           shadow-sm hover:shadow-md
+           transition-all ease-in-out duration-300
+           rounded-md
+           z-[1000000]"
+
+                >
+
+
+                  <HelpCircle className="w-4 h-4 mr-2" />
+                  View Available Commands
+                </Button>
+              </motion.div>
+            )}
+
+            {/* Messages */}
+            {messages?.map((message) => (
               <motion.div
                 key={message.id}
-                initial={{ opacity: 0, y: 10 }}
+                initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                className={`flex gap-3 ${
-                  message.type === "user" ? "justify-end" : "justify-start"
-                }`}
+                transition={{
+                  duration: 0.35,
+                  ease: "easeOut"
+                }}
+                className={`flex gap-3 ${message.type === "user" ? "justify-end" : "justify-start"
+                  }`}
               >
                 {message.type === "assistant" && (
                   <div className="flex-shrink-0 mt-1">
                     {getIcon(message.type, message.needsConfirmation)}
                   </div>
                 )}
-                <div
-                  className={`max-w-[80%] rounded-2xl p-4 ${
-                    message.type === "user"
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-card border shadow-medium"
-                  }`}
+
+                <motion.div
+                  initial={{ opacity: 0, y: 15 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3, ease: "easeOut" }}
+                  className={`max-w-[80%] rounded-2xl p-4 ${message.type === "user"
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-card border shadow"
+                    }`}
                 >
                   {renderMessageContent(message)}
-                </div>
+                </motion.div>
+
                 {message.type === "user" && (
                   <div className="flex-shrink-0 mt-1">
                     {getIcon(message.type)}
@@ -769,16 +848,18 @@ const PromptView = () => {
                 )}
               </motion.div>
             ))}
+
+
+            {/* Loading indicator */}
             {isProcessing && (
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 className="flex justify-start gap-3"
               >
-                <div className="flex-shrink-0 mt-1">
-                  <Loader2 className="w-5 h-5 text-blue-500 animate-spin" />
-                </div>
-                <div className="bg-card border shadow-medium rounded-2xl p-4">
+                <Loader2 className="w-5 h-5 text-blue-500 animate-spin mt-1" />
+
+                <div className="bg-card border shadow rounded-2xl p-4">
                   <div className="flex items-center gap-2 text-muted-foreground">
                     <Loader2 className="w-4 h-4 animate-spin" />
                     Processing...
@@ -786,14 +867,46 @@ const PromptView = () => {
                 </div>
               </motion.div>
             )}
-            <div ref={messagesEndRef} />
-          </div>
 
-          {/* Input Area */}
-          <div className="border-t pt-4">
+            <div ref={messagesEndRef} />
+                {messages?.length > 0 && (
+  <div className="w-full flex justify-center mt-4">
+    <div
+      className="flex items-center gap-2  
+      px-4 py-2 
+      text-xs "
+    >
+      <AlertTriangle className="w-4 h-4 text-yellow-700" />
+      <span className="text-center">
+        The responses and actions may not be fully accurate as the system is in beta.
+      </span>
+    </div>
+  </div>
+)}
+{/* </div> */}
+
+            
+          </div>
+        </div>
+
+        {/* Fixed Input Area */}
+        <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-3xl px-4 overflow-hidden">
+          <div className="bg-background border-t border-r border-l  border-dashed border-black dark:border-white rounded-t-sm shadow-lg shadow-black/20 p-4">
+
+            {/* Input Row */}
             <div className="flex gap-2">
+            <Button
+    className="bg-white text-black border border-dashed border-black 
+               hover:bg-white hover:text-black hover:shadow-md
+               transition-all duration-200
+               rounded-sm p-3 flex items-center justify-center"
+    onClick={() => setShowCommand(!showCommand)}
+  >
+    {showCommand ? <ArrowDown className="w-4 h-4" /> : <ArrowUp className="w-4 h-4" />}
+  </Button>
+
               <Textarea
-                placeholder="Type your command... (e.g., 'Create customer John', 'Edit product p1', 'List customers', 'View product p1')"
+                placeholder="Type your command..."
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => {
@@ -802,50 +915,63 @@ const PromptView = () => {
                     processCommand(input);
                   }
                 }}
-                className="flex-1 resize-none min-h-[60px]"
+                className="flex-1 resize-none min-h-[60px] rounded-sm "
                 disabled={isProcessing}
               />
+
               <Button
                 onClick={() => processCommand(input)}
                 disabled={!input.trim() || isProcessing}
-                className="self-stretch px-6"
+                className="self-stretch px-6 bg-white text-black hover:bg-white hover:text-black border border-dashed border-black hover:shadow-md
+                           transition-all duration-200
+                           rounded-sm flex items-center justify-center"
                 size="lg"
               >
                 {isProcessing ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
-                  <ArrowRight className="w-4 h-4" />
+                  <Send className="w-4 h-4" />
                 )}
               </Button>
+
             </div>
 
             {/* Quick Actions */}
-            <div className="flex flex-wrap gap-2 mt-3">
-              {[
-                "Create customer Alex",
-                "Edit customer c1",
-                "Delete customer c2",
-                "List customers",
-                "View customer c1",
-                "Create product Laptop",
-                "Edit product p1",
-                "List products",
-              ].map((example) => (
-                <Button
-                  key={example}
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleQuickAction(example)}
-                  disabled={isProcessing}
-                  className="text-xs h-8"
-                >
-                  {example}
-                </Button>
-              ))}
-            </div>
+            {showCommand && <div className="my-2 w-full border-t  border-dashed border-gray-400"  />}
+            <div
+    className={`flex flex-wrap gap-2 mt-3 transition-all duration-300 
+                ${showCommand ? "opacity-100 max-h-[300px]" : "opacity-0 max-h-0 overflow-hidden"}`}
+  >
+    {[
+      "Create customer Alex",
+      "Edit customer c1",
+      "Delete customer c2",
+      "List customers",
+      "View customer c1",
+      "Create product Laptop",
+      "Edit product p1",
+      "List products",
+    ].map((example) => (
+      <Button
+        key={example}
+        variant="outline"
+        size="sm"
+        onClick={() => handleQuickAction(example)}
+        disabled={isProcessing}
+        className="text-xs h-8"
+      >
+        {example}
+      </Button>
+    ))}
+  </div>
+
+
           </div>
         </div>
+
+
       </div>
+
 
       {/* Help Modal */}
       {showHelpModal && <HelpModal />}
