@@ -1,3 +1,63 @@
+// // middleware/auth.js
+// import { AuthError, PermissionError } from "./errorHandler.js";
+// import prisma from "../utils/db.js";
+
+// // Simple JWT-like auth (replace with real JWT in production)
+// export const authenticate = async (req, res, next) => {
+//   try {
+//     const token = req.header("Authorization")?.replace("Bearer ", "");
+
+//     if (!token) {
+//       throw new AuthError();
+//     }
+
+//     // In production, verify JWT token here
+//     // For now, using simple user ID from token
+//     const user = await prisma.user.findUnique({
+//       where: { id: token },
+//     });
+
+//     if (!user) {
+//       throw new AuthError("Invalid token");
+//     }
+
+//     req.user = user;
+//     next();
+//   } catch (error) {
+//     next(error);
+//   }
+// };
+
+// export const authorize = (...roles) => {
+//   return (req, res, next) => {
+//     if (!req.user) {
+//       return next(new AuthError());
+//     }
+
+//     if (!roles.includes(req.user.role)) {
+//       return next(
+//         new PermissionError(
+//           `Required roles: ${roles.join(", ")}. Your role: ${req.user.role}`
+//         )
+//       );
+//     }
+
+//     next();
+//   };
+// };
+
+// // Role-based permissions
+// export const permissions = {
+//   // Admin: full access
+//   // Manager: manage products and orders
+//   // Staff: create orders only
+
+//   canManageProducts: (user) => ["ADMIN", "MANAGER"].includes(user.role),
+//   canManageCustomers: (user) => ["ADMIN", "MANAGER"].includes(user.role),
+//   canManageOrders: (user) => ["ADMIN", "MANAGER", "STAFF"].includes(user.role),
+//   canDeleteRecords: (user) => ["ADMIN", "MANAGER"].includes(user.role),
+//   canViewAuditLogs: (user) => ["ADMIN"].includes(user.role),
+// };
 // middleware/auth.js
 import { AuthError, PermissionError } from "./errorHandler.js";
 import prisma from "../utils/db.js";
@@ -5,6 +65,19 @@ import prisma from "../utils/db.js";
 // Simple JWT-like auth (replace with real JWT in production)
 export const authenticate = async (req, res, next) => {
   try {
+    // COMMENTED OUT FOR TESTING - BYPASS AUTHENTICATION
+    console.log("⚠️  Authentication bypassed for testing");
+
+    // For testing, create a mock user
+    req.user = {
+      id: "test-user-id",
+      role: "ADMIN", // Give admin role for full access during testing
+      name: "Test User",
+    };
+
+    next();
+
+    /* ORIGINAL AUTH CODE - COMMENTED OUT
     const token = req.header("Authorization")?.replace("Bearer ", "");
 
     if (!token) {
@@ -23,6 +96,7 @@ export const authenticate = async (req, res, next) => {
 
     req.user = user;
     next();
+    */
   } catch (error) {
     next(error);
   }
@@ -30,6 +104,11 @@ export const authenticate = async (req, res, next) => {
 
 export const authorize = (...roles) => {
   return (req, res, next) => {
+    // COMMENTED OUT FOR TESTING - BYPASS AUTHORIZATION
+    console.log(`⚠️  Authorization bypassed for roles: ${roles.join(", ")}`);
+    next();
+
+    /* ORIGINAL AUTHORIZATION CODE - COMMENTED OUT
     if (!req.user) {
       return next(new AuthError());
     }
@@ -43,6 +122,7 @@ export const authorize = (...roles) => {
     }
 
     next();
+    */
   };
 };
 

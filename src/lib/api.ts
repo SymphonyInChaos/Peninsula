@@ -7,14 +7,16 @@ export const api = {
       if (!response.ok) {
         throw new Error('Failed to fetch customers');
       }
-      return response.json();
+      const data = await response.json();
+      return data.data || data; // Handle both response structures
     },
     getById: async (id: string) => {
       const response = await fetch(`${API_BASE_URL}/api/customers/${id}`);
       if (!response.ok) {
         throw new Error('Failed to fetch customer');
       }
-      return response.json();
+      const data = await response.json();
+      return data.data || data; // Handle both response structures
     },
     create: async (data: { name: string; email?: string; phone?: string }) => {
       const response = await fetch(`${API_BASE_URL}/api/customers`, {
@@ -26,7 +28,8 @@ export const api = {
         const error = await response.json();
         throw new Error(error.message || 'Failed to create customer');
       }
-      return response.json();
+      const result = await response.json();
+      return result.data || result; // Handle both response structures
     },
     update: async (id: string, data: { name?: string; email?: string; phone?: string }) => {
       const response = await fetch(`${API_BASE_URL}/api/customers/${id}`, {
@@ -38,7 +41,8 @@ export const api = {
         const error = await response.json();
         throw new Error(error.message || 'Failed to update customer');
       }
-      return response.json();
+      const result = await response.json();
+      return result.data || result; // Handle both response structures
     },
     delete: async (id: string) => {
       const response = await fetch(`${API_BASE_URL}/api/customers/${id}`, {
@@ -57,16 +61,19 @@ export const api = {
       if (!response.ok) {
         throw new Error('Failed to fetch products');
       }
-      return response.json();
+      const data = await response.json();
+      // Your backend returns { success: true, data: [...], count: number }
+      return data.data || data; // Extract products array from data property
     },
     getById: async (id: string) => {
       const response = await fetch(`${API_BASE_URL}/api/products/${id}`);
       if (!response.ok) {
         throw new Error('Failed to fetch product');
       }
-      return response.json();
+      const data = await response.json();
+      return data.data || data; // Handle both response structures
     },
-    create: async (data: { name: string; price: number; stock: number }) => {
+    create: async (data: { name: string; price: number; stock: number; description?: string }) => {
       const response = await fetch(`${API_BASE_URL}/api/products`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -76,9 +83,10 @@ export const api = {
         const error = await response.json();
         throw new Error(error.message || 'Failed to create product');
       }
-      return response.json();
+      const result = await response.json();
+      return result.data || result; // Handle both response structures
     },
-    update: async (id: string, data: { name?: string; price?: number; stock?: number }) => {
+    update: async (id: string, data: { name?: string; price?: number; stock?: number; description?: string }) => {
       const response = await fetch(`${API_BASE_URL}/api/products/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -88,7 +96,8 @@ export const api = {
         const error = await response.json();
         throw new Error(error.message || 'Failed to update product');
       }
-      return response.json();
+      const result = await response.json();
+      return result.data || result; // Handle both response structures
     },
     delete: async (id: string) => {
       const response = await fetch(`${API_BASE_URL}/api/products/${id}`, {
@@ -107,14 +116,16 @@ export const api = {
       if (!response.ok) {
         throw new Error('Failed to fetch orders');
       }
-      return response.json();
+      const data = await response.json();
+      return data.data || data; // Handle both response structures
     },
     getById: async (id: string) => {
       const response = await fetch(`${API_BASE_URL}/api/orders/${id}`);
       if (!response.ok) {
         throw new Error('Failed to fetch order');
       }
-      return response.json();
+      const data = await response.json();
+      return data.data || data; // Handle both response structures
     },
     create: async (data: { customerId?: string | null; items: Array<{ productId: string; qty: number }> }) => {
       const response = await fetch(`${API_BASE_URL}/api/orders`, {
@@ -126,7 +137,8 @@ export const api = {
         const error = await response.json();
         throw new Error(error.message || 'Failed to create order');
       }
-      return response.json();
+      const result = await response.json();
+      return result.data || result; // Handle both response structures
     },
     update: async (id: string, data: { customerId?: string | null; items?: Array<{ productId: string; qty: number }> }) => {
       const response = await fetch(`${API_BASE_URL}/api/orders/${id}`, {
@@ -138,7 +150,8 @@ export const api = {
         const error = await response.json();
         throw new Error(error.message || 'Failed to update order');
       }
-      return response.json();
+      const result = await response.json();
+      return result.data || result; // Handle both response structures
     },
     delete: async (id: string) => {
       const response = await fetch(`${API_BASE_URL}/api/orders/${id}`, {
@@ -152,4 +165,3 @@ export const api = {
     },
   },
 };
-

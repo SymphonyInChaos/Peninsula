@@ -1,40 +1,45 @@
-import { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { useStore } from '@/store/useStore';
-import { Button } from '@/components/ui/button';
-import { Package, ShoppingCart, Users, TrendingUp, Menu, LogOut, Sparkles } from 'lucide-react';
-import ProductsView from '@/components/dashboard/ProductsView';
-import OrdersView from '@/components/dashboard/OrdersView';
-import CustomersView from '@/components/dashboard/CustomersView';
+import { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { useStore } from "@/store/useStore";
+import { Button } from "@/components/ui/button";
+import {
+  Package,
+  ShoppingCart,
+  Users,
+  TrendingUp,
+  Menu,
+  LogOut,
+  Sparkles,
+} from "lucide-react";
+import ProductsView from "@/components/dashboard/ProductsView";
+import OrdersView from "@/components/dashboard/OrdersView";
+import CustomersView from "@/components/dashboard/CustomersView";
+import ReportView from "@/components/dashboard/ReportView";
 
-type ActiveView = 'products' | 'orders' | 'customers' | 'reports';
+type ActiveView = "products" | "orders" | "customers" | "reports";
 
 const Dashboard = () => {
-  const [activeView, setActiveView] = useState<ActiveView>('products');
+  const [activeView, setActiveView] = useState<ActiveView>("products");
   const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 768);
   const { toggleViewMode, logout } = useStore();
 
   const menuItems = [
-    { id: 'products' as ActiveView, label: 'Products', icon: Package },
-    { id: 'orders' as ActiveView, label: 'Orders', icon: ShoppingCart },
-    { id: 'customers' as ActiveView, label: 'Customers', icon: Users },
-    { id: 'reports' as ActiveView, label: 'Reports', icon: TrendingUp },
+    { id: "products" as ActiveView, label: "Products", icon: Package },
+    { id: "orders" as ActiveView, label: "Orders", icon: ShoppingCart },
+    { id: "customers" as ActiveView, label: "Customers", icon: Users },
+    { id: "reports" as ActiveView, label: "Reports", icon: TrendingUp },
   ];
 
   const renderView = () => {
     switch (activeView) {
-      case 'products':
+      case "products":
         return <ProductsView />;
-      case 'orders':
+      case "orders":
         return <OrdersView />;
-      case 'customers':
+      case "customers":
         return <CustomersView />;
-      case 'reports':
-        return (
-          <div className="flex items-center justify-center h-full">
-            <p className="text-muted-foreground">Reports view coming soon...</p>
-          </div>
-        );
+      case "reports":
+        return <ReportView />;
     }
   };
 
@@ -47,7 +52,7 @@ const Dashboard = () => {
             initial={{ x: -300 }}
             animate={{ x: 0 }}
             exit={{ x: -300 }}
-            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+            transition={{ type: "spring", damping: 25, stiffness: 200 }}
             className="sticky top-0 md:relative z-40 w-64 h-full border-r border-border bg-card/95 backdrop-blur-sm flex flex-col"
           >
             <div className="p-6 border-b border-border">
@@ -55,7 +60,9 @@ const Dashboard = () => {
                 <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center">
                   <Package className="w-5 h-5 text-primary-foreground" />
                 </div>
-                <h1 className="text-lg sm:text-xl font-light font-sans tracking-tight">Peninsula</h1>
+                <h1 className="text-lg sm:text-xl font-light font-sans tracking-tight">
+                  Peninsula
+                </h1>
               </div>
             </div>
 
@@ -69,8 +76,8 @@ const Dashboard = () => {
                   }}
                   className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
                     activeView === item.id
-                      ? 'bg-primary text-primary-foreground shadow-soft'
-                      : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                      ? "bg-primary text-primary-foreground shadow-soft"
+                      : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                   }`}
                 >
                   <item.icon className="w-5 h-5" />
@@ -128,7 +135,9 @@ const Dashboard = () => {
               >
                 <Menu className="w-5 h-5" />
               </Button>
-              <h2 className="text-lg sm:text-2xl font-bold capitalize">{activeView}</h2>
+              <h2 className="text-lg sm:text-2xl font-bold capitalize">
+                {activeView}
+              </h2>
             </div>
           </div>
         </header>
