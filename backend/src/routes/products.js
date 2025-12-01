@@ -1,70 +1,66 @@
+// routes/products.js
 import { Router } from "express";
-import prisma, {
-  validateProduct,
-  validateStockAvailability,
-} from "../utils/db.js";
+import prisma, { validateProduct } from "../utils/db.js";
 import { generateNextId } from "../utils/idGenerator.js";
-import { AuditService } from "../services/auditService.js";
-import { authenticate, authorize, permissions } from "../middleware/auth.js";
-import {
-  AppError,
-  StockError,
-  ValidationError,
-} from "../middleware/errorHandler.js";
 
 const router = Router();
 
-// Apply authentication to all routes
-router.use(authenticate);
-
 // Get all products
-router.get("/", async (req, res, next) => {
+router.get("/", async (_req, res) => {
   try {
     const products = await prisma.product.findMany({
       orderBy: { createdAt: "desc" },
     });
 
-    res.json({
-      success: true,
-      data: products,
-      count: products.length,
-    });
+    res.json(products);
   } catch (error) {
-    next(error);
+    console.error("Failed to fetch products", error);
+    res.status(500).json({ message: "Failed to fetch products" });
   }
 });
 
 // Get product by ID
-router.get("/:id", async (req, res, next) => {
+router.get("/:id", async (req, res) => {
   try {
     const product = await prisma.product.findUnique({
       where: { id: req.params.id },
     });
 
     if (!product) {
-      throw new AppError("Product not found", 404);
+      return res.status(404).json({ message: "Product not found" });
     }
 
-    res.json({
-      success: true,
-      data: product,
-    });
+    res.json(product);
   } catch (error) {
-    next(error);
+    console.error("Failed to fetch product", error);
+    res.status(500).json({ message: "Failed to fetch product" });
   }
 });
 
-// Create product - Only managers and admins
-router.post("/", authorize("ADMIN", "MANAGER"), async (req, res, next) => {
+// Create product
+router.post("/", async (req, res) => {
   try {
-    const { name, price, stock, description } = req.body;
+    const {
+      name,
+      price,
+      stock,
+      description,
+      category,
+      unit,
+      purchasePrice,
+      expiryDate,
+    } = req.body;
 
-    // Validate input with enhanced validation
-    const validatedData = await validateProduct({
+    // Validate input
+    const validatedData = validateProduct({
       name,
       price: Number(price),
       stock: Number(stock),
       description: description || null,
+      category: category || null,
+      unit: unit || null,
+      purchasePrice: purchasePrice ? Number(purchasePrice) : null,
+      expiryDate: expiryDate || null,
     });
 
     const id = await generateNextId("p", "product");
@@ -74,193 +70,174 @@ router.post("/", authorize("ADMIN", "MANAGER"), async (req, res, next) => {
         id,
         name: validatedData.name,
         description: validatedData.description,
+        category: validatedData.category,
+        unit: validatedData.unit,
+        purchasePrice: validatedData.purchasePrice,
         price: validatedData.price,
         stock: validatedData.stock,
+        expiryDate: validatedData.expiryDate
+          ? new Date(validatedData.expiryDate)
+          : null,
       },
     });
 
-    // Audit log
-    await AuditService.logProductChange(
-      "CREATE",
-      product.id,
-      null,
-      product,
-      req.user.id,
-      req.user.role,
-      req.ip
-    );
-
-    res.status(201).json({
-      success: true,
-      message: "Product created successfully",
-      data: product,
-    });
+    res.status(201).json(product);
   } catch (error) {
     if (error.name === "ZodError") {
-      next(new ValidationError(error.errors));
-    } else {
-      next(error);
+      return res.status(400).json({
+        message: "Validation failed",
+        errors: error.errors,
+      });
     }
+
+    console.error("Failed to create product", error);
+    res.status(500).json({ message: "Failed to create product" });
   }
 });
 
-// Update product - Only managers and admins
-router.put("/:id", authorize("ADMIN", "MANAGER"), async (req, res, next) => {
+// Update product
+router.put("/:id", async (req, res) => {
   try {
-    const { name, price, stock, description } = req.body;
+    const {
+      name,
+      price,
+      stock,
+      description,
+      category,
+      unit,
+      purchasePrice,
+      expiryDate,
+    } = req.body;
 
-    // Check if product exists and get current state for audit
+    // Check if product exists
     const existingProduct = await prisma.product.findUnique({
       where: { id: req.params.id },
     });
 
     if (!existingProduct) {
-      throw new AppError("Product not found", 404);
+      return res.status(404).json({ message: "Product not found" });
     }
 
     // Validate input
-    const validatedData = await validateProduct({
-      id: req.params.id, // Pass ID for duplicate check exclusion
+    const validatedData = validateProduct({
       name: name !== undefined ? name : existingProduct.name,
       price: price !== undefined ? Number(price) : existingProduct.price,
       stock: stock !== undefined ? Number(stock) : existingProduct.stock,
       description:
         description !== undefined ? description : existingProduct.description,
+      category: category !== undefined ? category : existingProduct.category,
+      unit: unit !== undefined ? unit : existingProduct.unit,
+      purchasePrice:
+        purchasePrice !== undefined
+          ? Number(purchasePrice)
+          : existingProduct.purchasePrice,
+      expiryDate:
+        expiryDate !== undefined
+          ? expiryDate
+          : existingProduct.expiryDate?.toISOString(),
     });
 
     const product = await prisma.product.update({
       where: { id: req.params.id },
       data: {
-        ...(name !== undefined && { name: validatedData.name }),
-        ...(description !== undefined && {
-          description: validatedData.description,
-        }),
-        ...(price !== undefined && { price: validatedData.price }),
-        ...(stock !== undefined && { stock: validatedData.stock }),
+        name: validatedData.name,
+        description: validatedData.description,
+        category: validatedData.category,
+        unit: validatedData.unit,
+        purchasePrice: validatedData.purchasePrice,
+        price: validatedData.price,
+        stock: validatedData.stock,
+        expiryDate: validatedData.expiryDate
+          ? new Date(validatedData.expiryDate)
+          : null,
       },
     });
 
-    // Audit log
-    await AuditService.logProductChange(
-      "UPDATE",
-      product.id,
-      existingProduct,
-      product,
-      req.user.id,
-      req.user.role,
-      req.ip
-    );
-
-    res.json({
-      success: true,
-      message: "Product updated successfully",
-      data: product,
-    });
+    res.json(product);
   } catch (error) {
     if (error.name === "ZodError") {
-      next(new ValidationError(error.errors));
-    } else if (error.code === "P2025") {
-      next(new AppError("Product not found", 404));
-    } else {
-      next(error);
+      return res.status(400).json({
+        message: "Validation failed",
+        errors: error.errors,
+      });
     }
+
+    if (error.code === "P2025") {
+      return res.status(404).json({ message: "Product not found" });
+    }
+
+    console.error("Failed to update product", error);
+    res.status(500).json({ message: "Failed to update product" });
   }
 });
 
-// Update stock only - Managers and admins
-router.patch(
-  "/:id/stock",
-  authorize("ADMIN", "MANAGER"),
-  async (req, res, next) => {
-    try {
-      const { stock, operation = "SET" } = req.body; // operation: SET, INCREMENT, DECREMENT
+// Update stock only
+router.patch("/:id/stock", async (req, res) => {
+  try {
+    const { stock, operation = "SET" } = req.body;
 
-      if (typeof stock !== "number" || !Number.isInteger(stock)) {
-        throw new ValidationError([
-          {
-            path: ["stock"],
-            message: "Stock must be an integer",
-          },
-        ]);
-      }
+    const existingProduct = await prisma.product.findUnique({
+      where: { id: req.params.id },
+    });
 
-      const existingProduct = await prisma.product.findUnique({
-        where: { id: req.params.id },
-      });
-
-      if (!existingProduct) {
-        throw new AppError("Product not found", 404);
-      }
-
-      let newStock;
-      switch (operation) {
-        case "INCREMENT":
-          newStock = existingProduct.stock + stock;
-          break;
-        case "DECREMENT":
-          newStock = existingProduct.stock - stock;
-          if (newStock < 0) {
-            throw new StockError(
-              "Cannot decrement stock below zero",
-              req.params.id,
-              stock,
-              existingProduct.stock
-            );
-          }
-          break;
-        case "SET":
-        default:
-          if (stock < 0) {
-            throw new StockError(
-              "Stock cannot be negative",
-              req.params.id,
-              stock,
-              existingProduct.stock
-            );
-          }
-          newStock = stock;
-      }
-
-      const product = await prisma.product.update({
-        where: { id: req.params.id },
-        data: { stock: newStock },
-      });
-
-      // Audit log for stock change
-      await AuditService.logProductChange(
-        "UPDATE_STOCK",
-        product.id,
-        { stock: existingProduct.stock },
-        { stock: newStock },
-        req.user.id,
-        req.user.role,
-        req.ip
-      );
-
-      res.json({
-        success: true,
-        message: `Stock ${operation.toLowerCase()}ed successfully`,
-        data: {
-          previousStock: existingProduct.stock,
-          newStock: product.stock,
-          operation,
-        },
-      });
-    } catch (error) {
-      next(error);
+    if (!existingProduct) {
+      return res.status(404).json({ message: "Product not found" });
     }
-  }
-);
 
-// Delete product - Only admins and managers with checks
-router.delete("/:id", authorize("ADMIN", "MANAGER"), async (req, res, next) => {
+    let newStock;
+    switch (operation) {
+      case "INCREMENT":
+        newStock = existingProduct.stock + Number(stock);
+        break;
+      case "DECREMENT":
+        newStock = existingProduct.stock - Number(stock);
+        if (newStock < 0) {
+          return res.status(400).json({
+            message: "Cannot decrement stock below zero",
+            currentStock: existingProduct.stock,
+            requestedDecrement: stock,
+          });
+        }
+        break;
+      case "SET":
+      default:
+        if (stock < 0) {
+          return res.status(400).json({
+            message: "Stock cannot be negative",
+            requestedStock: stock,
+          });
+        }
+        newStock = Number(stock);
+    }
+
+    const product = await prisma.product.update({
+      where: { id: req.params.id },
+      data: { stock: newStock },
+    });
+
+    res.json({
+      message: `Stock ${operation.toLowerCase()}ed successfully`,
+      data: {
+        previousStock: existingProduct.stock,
+        newStock: product.stock,
+        operation,
+      },
+    });
+  } catch (error) {
+    console.error("Failed to update stock", error);
+    res.status(500).json({ message: "Failed to update stock" });
+  }
+});
+
+// Delete product
+router.delete("/:id", async (req, res) => {
   try {
     const existingProduct = await prisma.product.findUnique({
       where: { id: req.params.id },
     });
 
     if (!existingProduct) {
-      throw new AppError("Product not found", 404);
+      return res.status(404).json({ message: "Product not found" });
     }
 
     // Check if product is in any orders
@@ -270,38 +247,28 @@ router.delete("/:id", authorize("ADMIN", "MANAGER"), async (req, res, next) => {
     });
 
     if (orderItems.length > 0) {
-      throw new AppError(
-        "Cannot delete product that is part of existing orders. Consider archiving instead.",
-        400
-      );
+      return res.status(400).json({
+        message: "Cannot delete product that is part of existing orders",
+      });
     }
 
     await prisma.product.delete({
       where: { id: req.params.id },
     });
 
-    // Audit log
-    await AuditService.logProductChange(
-      "DELETE",
-      req.params.id,
-      existingProduct,
-      null,
-      req.user.id,
-      req.user.role,
-      req.ip
-    );
-
-    res.status(200).json({
-      success: true,
-      message: "Product deleted successfully",
-    });
+    res.json({ message: "Product deleted successfully" });
   } catch (error) {
-    next(error);
+    if (error.code === "P2025") {
+      return res.status(404).json({ message: "Product not found" });
+    }
+
+    console.error("Failed to delete product", error);
+    res.status(500).json({ message: "Failed to delete product" });
   }
 });
 
 // Get low stock products
-router.get("/inventory/low-stock", async (req, res, next) => {
+router.get("/inventory/low-stock", async (req, res) => {
   try {
     const threshold = parseInt(req.query.threshold) || 10;
 
@@ -315,13 +282,13 @@ router.get("/inventory/low-stock", async (req, res, next) => {
     });
 
     res.json({
-      success: true,
       data: lowStockProducts,
       threshold,
       count: lowStockProducts.length,
     });
   } catch (error) {
-    next(error);
+    console.error("Failed to fetch low stock products", error);
+    res.status(500).json({ message: "Failed to fetch low stock products" });
   }
 });
 

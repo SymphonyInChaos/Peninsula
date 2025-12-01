@@ -4,11 +4,11 @@ import prisma from "../utils/db.js";
 export class ReportService {
   // DAILY SALES REPORT
   static async getDailySalesReport(date = null) {
-    const targetDate = date ? new Date(date) : new Date();
-    const startOfDay = new Date(targetDate.setHours(0, 0, 0, 0));
-    const endOfDay = new Date(targetDate.setHours(23, 59, 59, 999));
-
     try {
+      const targetDate = date ? new Date(date) : new Date();
+      const startOfDay = new Date(targetDate.setHours(0, 0, 0, 0));
+      const endOfDay = new Date(targetDate.setHours(23, 59, 59, 999));
+
       const dailyOrders = await prisma.order.findMany({
         where: {
           createdAt: {
@@ -33,7 +33,7 @@ export class ReportService {
 
       // Calculate metrics
       const totalSales = dailyOrders.reduce(
-        (sum, order) => sum + order.total,
+        (sum, order) => sum + (order.total || 0),
         0
       );
       const orderCount = dailyOrders.length;
@@ -45,7 +45,7 @@ export class ReportService {
         order.items.forEach((item) => {
           const productName = item.product.name;
           productSales[productName] =
-            (productSales[productName] || 0) + item.qty;
+            (productSales[productName] || 0) + (item.qty || 0);
         });
       });
 
@@ -63,14 +63,17 @@ export class ReportService {
           totalItems: dailyOrders.reduce(
             (sum, order) =>
               sum +
-              order.items.reduce((itemSum, item) => itemSum + item.qty, 0),
+              order.items.reduce(
+                (itemSum, item) => itemSum + (item.qty || 0),
+                0
+              ),
             0
           ),
         },
         orders: dailyOrders.map((order) => ({
           id: order.id,
           customer: order.customer?.name || "Walk-in",
-          total: order.total,
+          total: order.total || 0,
           itemCount: order.items.length,
           time: order.createdAt.toISOString(),
         })),
@@ -79,48 +82,71 @@ export class ReportService {
       };
     } catch (error) {
       console.error("Daily sales report error:", error);
-      throw new Error("Failed to generate daily sales report");
+      // Return empty data structure instead of throwing
+      return {
+        date: new Date().toISOString().split("T")[0],
+        summary: {
+          totalSales: 0,
+          orderCount: 0,
+          avgOrderValue: 0,
+          totalItems: 0,
+        },
+        orders: [],
+        topProducts: [],
+        hourlyBreakdown: Array.from({ length: 24 }, (_, i) => ({
+          hour: `${i.toString().padStart(2, "0")}:00`,
+          sales: 0,
+          orders: 0,
+        })),
+      };
     }
   }
 
   // HOURLY SALES BREAKDOWN
   static async getHourlySales(startOfDay, endOfDay) {
-    const hourlyData = await prisma.order.groupBy({
-      by: ["createdAt"],
-      where: {
-        createdAt: {
-          gte: startOfDay,
-          lte: endOfDay,
+    try {
+      const orders = await prisma.order.findMany({
+        where: {
+          createdAt: {
+            gte: startOfDay,
+            lte: endOfDay,
+          },
         },
-      },
-      _sum: {
-        total: true,
-      },
-      _count: {
-        id: true,
-      },
-    });
-
-    // Group by hour
-    const hourlySales = {};
-    hourlyData.forEach((order) => {
-      const hour = new Date(order.createdAt).getHours();
-      hourlySales[hour] = hourlySales[hour] || { sales: 0, orders: 0 };
-      hourlySales[hour].sales += order._sum.total || 0;
-      hourlySales[hour].orders += order._count.id;
-    });
-
-    // Fill missing hours
-    const result = [];
-    for (let hour = 0; hour < 24; hour++) {
-      result.push({
-        hour: `${hour.toString().padStart(2, "0")}:00`,
-        sales: hourlySales[hour]?.sales || 0,
-        orders: hourlySales[hour]?.orders || 0,
+        select: {
+          createdAt: true,
+          total: true,
+        },
       });
-    }
 
-    return result;
+      // Group by hour
+      const hourlySales = {};
+      orders.forEach((order) => {
+        const hour = new Date(order.createdAt).getHours();
+        hourlySales[hour] = hourlySales[hour] || { sales: 0, orders: 0 };
+        hourlySales[hour].sales += order.total || 0;
+        hourlySales[hour].orders += 1;
+      });
+
+      // Fill missing hours
+      const result = [];
+      for (let hour = 0; hour < 24; hour++) {
+        result.push({
+          hour: `${hour.toString().padStart(2, "0")}:00`,
+          sales: hourlySales[hour]?.sales || 0,
+          orders: hourlySales[hour]?.orders || 0,
+        });
+      }
+
+      return result;
+    } catch (error) {
+      console.error("Hourly sales error:", error);
+      // Return empty hourly data
+      return Array.from({ length: 24 }, (_, i) => ({
+        hour: `${i.toString().padStart(2, "0")}:00`,
+        sales: 0,
+        orders: 0,
+      }));
+    }
   }
 
   // LOW STOCK REPORT
@@ -177,7 +203,17 @@ export class ReportService {
       };
     } catch (error) {
       console.error("Low stock report error:", error);
-      throw new Error("Failed to generate low stock report");
+      return {
+        generatedAt: new Date().toISOString(),
+        threshold,
+        summary: {
+          totalLowStock: 0,
+          outOfStock: 0,
+          criticalStock: 0,
+          warningStock: 0,
+        },
+        products: [],
+      };
     }
   }
 
@@ -234,7 +270,7 @@ export class ReportService {
 
       const customerReports = customers.map((customer) => {
         const totalSpent = customer.orders.reduce(
-          (sum, order) => sum + order.total,
+          (sum, order) => sum + (order.total || 0),
           0
         );
         const orderCount = customer.orders.length;
@@ -246,7 +282,7 @@ export class ReportService {
           order.items.forEach((item) => {
             const productName = item.product.name;
             productFrequency[productName] =
-              (productFrequency[productName] || 0) + item.qty;
+              (productFrequency[productName] || 0) + (item.qty || 0);
           });
         });
 
@@ -260,7 +296,7 @@ export class ReportService {
         const recentActivity = customer.orders.slice(0, 5).map((order) => ({
           id: order.id,
           date: order.createdAt.toISOString().split("T")[0],
-          total: order.total,
+          total: order.total || 0,
           items: order.items.length,
         }));
 
@@ -290,11 +326,11 @@ export class ReportService {
           allOrders: customer.orders.map((order) => ({
             id: order.id,
             date: order.createdAt.toISOString(),
-            total: order.total,
+            total: order.total || 0,
             items: order.items.map((item) => ({
               product: item.product.name,
-              quantity: item.qty,
-              price: item.price,
+              quantity: item.qty || 0,
+              price: item.price || 0,
             })),
           })),
         };
@@ -308,7 +344,10 @@ export class ReportService {
       };
     } catch (error) {
       console.error("Customer history report error:", error);
-      throw new Error("Failed to generate customer purchase history");
+      return {
+        generatedAt: new Date().toISOString(),
+        customers: [],
+      };
     }
   }
 
@@ -360,7 +399,7 @@ export class ReportService {
           };
         }
 
-        salesData[dateKey].totalSales += order.total;
+        salesData[dateKey].totalSales += order.total || 0;
         salesData[dateKey].orderCount += 1;
 
         // Track product sales
@@ -373,9 +412,9 @@ export class ReportService {
               revenue: 0,
             };
           }
-          salesData[dateKey].products[productId].quantity += item.qty;
+          salesData[dateKey].products[productId].quantity += item.qty || 0;
           salesData[dateKey].products[productId].revenue +=
-            item.price * item.qty;
+            (item.price || 0) * (item.qty || 0);
         });
       });
 
@@ -399,23 +438,30 @@ export class ReportService {
         trend,
         summary: {
           totalRevenue: trend.reduce(
-            (sum, period) => sum + period.totalSales,
+            (sum, period) => sum + (period.totalSales || 0),
             0
           ),
           totalOrders: trend.reduce(
-            (sum, period) => sum + period.orderCount,
+            (sum, period) => sum + (period.orderCount || 0),
             0
           ),
           avgWeeklyRevenue:
             period === "weekly"
-              ? trend.reduce((sum, period) => sum + period.totalSales, 0) /
-                trend.length
+              ? trend.reduce(
+                  (sum, period) => sum + (period.totalSales || 0),
+                  0
+                ) / (trend.length || 1)
               : null,
         },
       };
     } catch (error) {
       console.error("Sales trend report error:", error);
-      throw new Error("Failed to generate sales trend report");
+      return {
+        period,
+        dateRange: { start: "", end: "" },
+        trend: [],
+        summary: { totalRevenue: 0, totalOrders: 0, avgWeeklyRevenue: 0 },
+      };
     }
   }
 
@@ -428,7 +474,7 @@ export class ReportService {
 
       const valuation = products.map((product) => ({
         ...product,
-        value: product.price * product.stock,
+        value: (product.price || 0) * (product.stock || 0),
         status:
           product.stock === 0
             ? "Out of Stock"
@@ -440,11 +486,11 @@ export class ReportService {
       }));
 
       const totalValue = valuation.reduce(
-        (sum, product) => sum + product.value,
+        (sum, product) => sum + (product.value || 0),
         0
       );
       const stockCount = valuation.reduce(
-        (sum, product) => sum + product.stock,
+        (sum, product) => sum + (product.stock || 0),
         0
       );
 
@@ -455,18 +501,30 @@ export class ReportService {
           totalInventoryValue: Math.round(totalValue * 100) / 100,
           totalStockCount: stockCount,
           averageProductValue:
-            Math.round((totalValue / products.length) * 100) / 100,
+            products.length > 0
+              ? Math.round((totalValue / products.length) * 100) / 100
+              : 0,
         },
         breakdown: {
           outOfStock: valuation.filter((p) => p.stock === 0).length,
           lowStock: valuation.filter((p) => p.stock <= 5).length,
           healthyStock: valuation.filter((p) => p.stock > 5).length,
         },
-        products: valuation.sort((a, b) => b.value - a.value), // Sort by highest value first
+        products: valuation.sort((a, b) => (b.value || 0) - (a.value || 0)), // Sort by highest value first
       };
     } catch (error) {
       console.error("Inventory valuation report error:", error);
-      throw new Error("Failed to generate inventory valuation report");
+      return {
+        generatedAt: new Date().toISOString(),
+        summary: {
+          totalProducts: 0,
+          totalInventoryValue: 0,
+          totalStockCount: 0,
+          averageProductValue: 0,
+        },
+        breakdown: { outOfStock: 0, lowStock: 0, healthyStock: 0 },
+        products: [],
+      };
     }
   }
 

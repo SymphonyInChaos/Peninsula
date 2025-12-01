@@ -1,5 +1,6 @@
+// routes/orders.js
 import { Router } from "express";
-import prisma, { validateOrder, OrderItemSchema } from "../utils/db.js";
+import prisma, { validateOrder } from "../utils/db.js";
 import { generateNextId } from "../utils/idGenerator.js";
 
 const router = Router();
@@ -75,11 +76,22 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ message: "Order items are invalid" });
     }
 
-    // Validate order structure
+    // Validate order structure - REMOVED AWAIT
     const validatedData = validateOrder({
       customerId,
       items: normalizedItems,
     });
+
+    // If customerId is provided, check if customer exists
+    if (customerId) {
+      const customerExists = await prisma.customer.findUnique({
+        where: { id: customerId },
+      });
+
+      if (!customerExists) {
+        return res.status(400).json({ message: "Customer not found" });
+      }
+    }
 
     const productIds = [
       ...new Set(validatedData.items.map((item) => item.productId)),
@@ -185,7 +197,7 @@ router.put("/:id", async (req, res) => {
       return res.status(400).json({ message: "Order items are invalid" });
     }
 
-    // Validate order structure if items are provided
+    // Validate order structure if items are provided - REMOVED AWAIT
     if (normalizedItems) {
       try {
         validateOrder({
@@ -213,6 +225,16 @@ router.put("/:id", async (req, res) => {
       let updateData = {};
 
       if (customerId !== undefined) {
+        // Check if customer exists when customerId is provided
+        if (customerId) {
+          const customerExists = await tx.customer.findUnique({
+            where: { id: customerId },
+          });
+
+          if (!customerExists) {
+            throw new Error("CUSTOMER_NOT_FOUND");
+          }
+        }
         updateData.customerId = customerId ?? null;
       }
 
@@ -317,6 +339,10 @@ router.put("/:id", async (req, res) => {
 
     res.json(order);
   } catch (error) {
+    if (error.message === "CUSTOMER_NOT_FOUND") {
+      return res.status(400).json({ message: "Customer not found" });
+    }
+
     if (error.message === "INVALID_PRODUCTS") {
       return res
         .status(400)

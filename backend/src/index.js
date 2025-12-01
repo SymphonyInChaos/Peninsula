@@ -6,6 +6,7 @@ import orderRoutes from "../src/routes/orders.js";
 import commandRoutes from "../src/routes/command.js";
 import reportRoutes from "../src/routes/report.js";
 import { errorHandler } from "./middleware/errorHandler.js";
+import authRoutes from "./routes/auth.js";
 import prisma from "./utils/db.js";
 import cors from "cors";
 
@@ -26,6 +27,7 @@ app.use("/api/customers", customerRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/command", commandRoutes);
 app.use("/api/reports", reportRoutes);
+app.use("/api/auth", authRoutes);
 
 // Health check with basic stats
 app.get("/health", async (req, res) => {
@@ -79,7 +81,7 @@ app.use(errorHandler);
 
 const PORT = process.env.PORT || 3000;
 
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📊 Health check: http://localhost:${PORT}/health`);
   console.log(`🛍️ API Base: http://localhost:${PORT}/api`);
