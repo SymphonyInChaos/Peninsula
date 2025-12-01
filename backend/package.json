@@ -14,7 +14,13 @@
   "license": "ISC",
   "dependencies": {
     "@prisma/client": "^6.19.0",
+<<<<<<< HEAD
     "bcryptjs": "^3.0.3",
+=======
+    "bcrypt": "^6.0.0",
+    "bcryptjs": "^3.0.3",
+    "cookie-parser": "^1.4.7",
+>>>>>>> 53cb659029550de5655c831108ba5aece07265df
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
