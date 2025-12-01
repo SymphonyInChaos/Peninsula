@@ -50,7 +50,7 @@ const PromptView = () => {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [showHelpModal, setShowHelpModal] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const [showCommand , setShowCommand] = useState(false);
+  const [showCommand, setShowCommand] = useState(false);
   const { toggleViewMode, logout } = useStore();
   const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
@@ -679,7 +679,7 @@ const PromptView = () => {
             </div>
             <h1 className="text-lg sm:text-xl font-light italic tracking-tight">
               Peninsula
-              
+
             </h1>
           </div>
           <div className="flex items-center gap-2 sm:gap-3">
@@ -699,20 +699,20 @@ const PromptView = () => {
             >
               Clear Chat
             </Button>
-           <Button
-  variant="outline"
-  onClick={toggleViewMode}
-  className="rounded-none text-xs sm:text-sm px-3 sm:px-4
+            <Button
+              variant="outline"
+              onClick={toggleViewMode}
+              className="rounded-none text-xs sm:text-sm px-3 sm:px-4
              bg-gradient-to-br from-blue-300 via-white to-blue-200
              hover:bg-gradient-to-tl hover:from-blue-200 hover:via-white hover:to-blue-300
              border border-blue-400 hover:border-blue-300
              shadow-sm hover:shadow-md
              transition-all ease-in-out duration-300
              italic font-sans"
->
-  <span className="hidden sm:inline">Traditional View</span>
-  <span className="sm:hidden">Traditional</span>
-</Button>
+            >
+              <span className="hidden sm:inline">Traditional View</span>
+              <span className="sm:hidden">Traditional</span>
+            </Button>
 
             <Button
               variant="ghost"
@@ -741,15 +741,15 @@ const PromptView = () => {
                 className="text-center space-y-4 py-12"
               >
                 <GridPattern
-        width={60}
-        height={60}
-        x={-1}
-        y={-1}
-        strokeDasharray={"4 4"}
-        className={cn(
-          "[mask-image:radial-gradient(400px_circle_at_center,green,transparent)]",
-        )}
-      />
+                  width={60}
+                  height={60}
+                  x={-1}
+                  y={-1}
+                  strokeDasharray={"4 4"}
+                  className={cn(
+                    "[mask-image:radial-gradient(400px_circle_at_center,green,transparent)]",
+                  )}
+                />
                 <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-md">
                   <span className="italic text-black relative font-thin font-serif">
                     <span className="font-semibold font-sans italic text-purple-700">AI powered</span> Assistant
@@ -869,23 +869,23 @@ const PromptView = () => {
             )}
 
             <div ref={messagesEndRef} />
-                {messages?.length > 0 && (
-  <div className="w-full flex justify-center mt-4">
-    <div
-      className="flex items-center gap-2  
+            {messages?.length > 0 && (
+              <div className="w-full flex justify-center mt-4">
+                <div
+                  className="flex items-center gap-2  
       px-4 py-2 
       text-xs "
-    >
-      <AlertTriangle className="w-4 h-4 text-yellow-700" />
-      <span className="text-center">
-        The responses and actions may not be fully accurate as the system is in beta.
-      </span>
-    </div>
-  </div>
-)}
-{/* </div> */}
+                >
+                  <AlertTriangle className="w-4 h-4 text-yellow-700" />
+                  <span className="text-center">
+                    The responses and actions may not be fully accurate as the system is in beta.
+                  </span>
+                </div>
+              </div>
+            )}
+            {/* </div> */}
 
-            
+
           </div>
         </div>
 
@@ -895,15 +895,15 @@ const PromptView = () => {
 
             {/* Input Row */}
             <div className="flex gap-2">
-            <Button
-    className="bg-white text-black border border-dashed border-black 
+              <Button
+                className="bg-white text-black border border-dashed border-black 
                hover:bg-white hover:text-black hover:shadow-md
                transition-all duration-200
                rounded-sm p-3 flex items-center justify-center"
-    onClick={() => setShowCommand(!showCommand)}
-  >
-    {showCommand ? <ArrowDown className="w-4 h-4" /> : <ArrowUp className="w-4 h-4" />}
-  </Button>
+                onClick={() => setShowCommand(!showCommand)}
+              >
+                {showCommand ? <ArrowDown className="w-4 h-4" /> : <ArrowUp className="w-4 h-4" />}
+              </Button>
 
               <Textarea
                 placeholder="Type your command..."
@@ -937,33 +937,33 @@ const PromptView = () => {
             </div>
 
             {/* Quick Actions */}
-            {showCommand && <div className="my-2 w-full border-t  border-dashed border-gray-400"  />}
+            {showCommand && <div className="my-2 w-full border-t  border-dashed border-gray-400" />}
             <div
-    className={`flex flex-wrap gap-2 mt-3 transition-all duration-300 
+              className={`flex flex-wrap gap-2 mt-3 transition-all duration-300 
                 ${showCommand ? "opacity-100 max-h-[300px]" : "opacity-0 max-h-0 overflow-hidden"}`}
-  >
-    {[
-      "Create customer Alex",
-      "Edit customer c1",
-      "Delete customer c2",
-      "List customers",
-      "View customer c1",
-      "Create product Laptop",
-      "Edit product p1",
-      "List products",
-    ].map((example) => (
-      <Button
-        key={example}
-        variant="outline"
-        size="sm"
-        onClick={() => handleQuickAction(example)}
-        disabled={isProcessing}
-        className="text-xs h-8"
-      >
-        {example}
-      </Button>
-    ))}
-  </div>
+            >
+              {[
+                "Create customer Alex",
+                "Edit customer c1",
+                "Delete customer c2",
+                "List customers",
+                "View customer c1",
+                "Create product Laptop",
+                "Edit product p1",
+                "List products",
+              ].map((example) => (
+                <Button
+                  key={example}
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleQuickAction(example)}
+                  disabled={isProcessing}
+                  className="text-xs h-8"
+                >
+                  {example}
+                </Button>
+              ))}
+            </div>
 
 
           </div>
