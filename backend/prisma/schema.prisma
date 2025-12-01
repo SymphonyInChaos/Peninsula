@@ -1,14 +1,27 @@
-// Add to your existing schema
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
 model Product {
-  id        String   @id @default(cuid())
-  name      String
-  price     Float
-  stock     Int
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  OrderItem OrderItem[]
+  id            String   @id @default(cuid())
+  name          String
+  description   String?   // Added this field
+  category      String?   // Added this field
+  unit          String?   // Added this field
+  purchasePrice Float?    // Added this field (for internal cost)
+  price         Float     // Selling price
+  stock         Int
+  expiryDate    DateTime? // Added this field
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  OrderItem     OrderItem[]
   
-  // Prevent negative stock at database level
   @@map("products")
 }
 
@@ -16,11 +29,10 @@ model Customer {
   id        String   @id @default(cuid())
   name      String
   phone     String?
-  email     String?  @unique  // Prevent duplicate emails
+  email     String?  @unique
   createdAt DateTime @default(now())
   orders    Order[]
   
-  // Composite unique constraint for business rules
   @@unique([phone, email])
   @@map("customers")
 }
@@ -45,16 +57,14 @@ model OrderItem {
   order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product   Product @relation(fields: [productId], references: [id])
   
-  // Prevent duplicate products in same order
   @@unique([orderId, productId])
   @@map("order_items")
 }
 
-// NEW: Audit Log table
 model AuditLog {
   id        String   @id @default(cuid())
-  action    String   // CREATE, UPDATE, DELETE
-  entity    String   // PRODUCT, CUSTOMER, ORDER
+  action    String
+  entity    String
   entityId  String
   oldValues Json?
   newValues Json?
@@ -66,7 +76,6 @@ model AuditLog {
   @@map("audit_logs")
 }
 
-// NEW: User table for authentication
 model User {
   id        String   @id @default(cuid())
   email     String   @unique

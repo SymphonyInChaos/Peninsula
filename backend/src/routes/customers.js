@@ -1,3 +1,4 @@
+// routes/customers.js
 import { Router } from "express";
 import prisma, { validateCustomer } from "../utils/db.js";
 import { generateNextId } from "../utils/idGenerator.js";
@@ -58,7 +59,7 @@ router.post("/", async (req, res) => {
   try {
     const { name, email, phone } = req.body;
 
-    // Validate input
+    // Validate input - REMOVED AWAIT since validateCustomer is now synchronous
     const validatedData = validateCustomer({
       name,
       email: email || null,
@@ -120,7 +121,7 @@ router.put("/:id", async (req, res) => {
   try {
     const { name, email, phone } = req.body;
 
-    // Validate input
+    // Validate input - REMOVED AWAIT
     const validatedData = validateCustomer({
       name,
       email: email !== undefined ? email : null,
