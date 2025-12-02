@@ -2,12 +2,21 @@
 import prisma from "../utils/db.js";
 
 export class ReportService {
-  // DAILY SALES REPORT
+  // DAILY SALES REPORT - FIXED: Date mutation issue
   static async getDailySalesReport(date = null) {
     try {
       const targetDate = date ? new Date(date) : new Date();
-      const startOfDay = new Date(targetDate.setHours(0, 0, 0, 0));
-      const endOfDay = new Date(targetDate.setHours(23, 59, 59, 999));
+      const startOfDay = new Date(targetDate);
+      startOfDay.setHours(0, 0, 0, 0);
+
+      const endOfDay = new Date(targetDate);
+      endOfDay.setHours(23, 59, 59, 999);
+
+      console.log("📊 Fetching daily sales for:", {
+        startOfDay,
+        endOfDay,
+        targetDate,
+      });
 
       const dailyOrders = await prisma.order.findMany({
         where: {
@@ -23,13 +32,15 @@ export class ReportService {
           items: {
             include: {
               product: {
-                select: { name: true },
+                select: { name: true, price: true },
               },
             },
           },
         },
         orderBy: { createdAt: "desc" },
       });
+
+      console.log(`📊 Found ${dailyOrders.length} orders for the day`);
 
       // Calculate metrics
       const totalSales = dailyOrders.reduce(
@@ -43,7 +54,7 @@ export class ReportService {
       const productSales = {};
       dailyOrders.forEach((order) => {
         order.items.forEach((item) => {
-          const productName = item.product.name;
+          const productName = item.product?.name || "Unknown";
           productSales[productName] =
             (productSales[productName] || 0) + (item.qty || 0);
         });
@@ -53,6 +64,8 @@ export class ReportService {
         .map(([name, qty]) => ({ name, quantity: qty }))
         .sort((a, b) => b.quantity - a.quantity)
         .slice(0, 5);
+
+      const hourlyBreakdown = await this.getHourlySales(startOfDay, endOfDay);
 
       return {
         date: startOfDay.toISOString().split("T")[0],
@@ -78,10 +91,10 @@ export class ReportService {
           time: order.createdAt.toISOString(),
         })),
         topProducts,
-        hourlyBreakdown: await this.getHourlySales(startOfDay, endOfDay),
+        hourlyBreakdown,
       };
     } catch (error) {
-      console.error("Daily sales report error:", error);
+      console.error("❌ Daily sales report error:", error.message);
       // Return empty data structure instead of throwing
       return {
         date: new Date().toISOString().split("T")[0],
@@ -118,6 +131,8 @@ export class ReportService {
         },
       });
 
+      console.log(`📊 Processing ${orders.length} orders for hourly breakdown`);
+
       // Group by hour
       const hourlySales = {};
       orders.forEach((order) => {
@@ -139,7 +154,7 @@ export class ReportService {
 
       return result;
     } catch (error) {
-      console.error("Hourly sales error:", error);
+      console.error("❌ Hourly sales error:", error.message);
       // Return empty hourly data
       return Array.from({ length: 24 }, (_, i) => ({
         hour: `${i.toString().padStart(2, "0")}:00`,
@@ -152,6 +167,8 @@ export class ReportService {
   // LOW STOCK REPORT
   static async getLowStockReport(threshold = 10) {
     try {
+      console.log(`📊 Fetching low stock products (threshold: ${threshold})`);
+
       const lowStockProducts = await prisma.product.findMany({
         where: {
           stock: {
@@ -160,6 +177,8 @@ export class ReportService {
         },
         orderBy: [{ stock: "asc" }, { name: "asc" }],
       });
+
+      console.log(`📊 Found ${lowStockProducts.length} low stock products`);
 
       // Calculate reorder suggestions
       const productsWithSuggestions = lowStockProducts.map((product) => {
@@ -181,7 +200,13 @@ export class ReportService {
         }
 
         return {
-          ...product,
+          id: product.id,
+          name: product.name,
+          description: product.description,
+          price: product.price,
+          stock: product.stock,
+          createdAt: product.createdAt,
+          updatedAt: product.updatedAt,
           reorderSuggestion,
           urgency,
           suggestedReorderQty: Math.max(25, product.stock * 3), // Simple reorder formula
@@ -202,7 +227,7 @@ export class ReportService {
         products: productsWithSuggestions,
       };
     } catch (error) {
-      console.error("Low stock report error:", error);
+      console.error("❌ Low stock report error:", error.message);
       return {
         generatedAt: new Date().toISOString(),
         threshold,
@@ -217,12 +242,14 @@ export class ReportService {
     }
   }
 
-  // CUSTOMER PURCHASE HISTORY
+  // CUSTOMER PURCHASE HISTORY - FIXED: Added proper error handling
   static async getCustomerPurchaseHistory(customerId = null, limit = 50) {
     try {
       let customers;
 
       if (customerId) {
+        console.log(`📊 Fetching purchase history for customer: ${customerId}`);
+
         // Single customer detail
         const customer = await prisma.customer.findUnique({
           where: { id: customerId },
@@ -243,11 +270,20 @@ export class ReportService {
         });
 
         if (!customer) {
-          throw new Error("Customer not found");
+          console.log(`❌ Customer ${customerId} not found`);
+          return {
+            generatedAt: new Date().toISOString(),
+            customer: null,
+            error: `Customer ${customerId} not found`,
+          };
         }
 
         customers = [customer];
       } else {
+        console.log(
+          `📊 Fetching purchase history for all customers (limit: ${limit})`
+        );
+
         // All customers with their orders
         customers = await prisma.customer.findMany({
           include: {
@@ -262,9 +298,11 @@ export class ReportService {
                 },
               },
               orderBy: { createdAt: "desc" },
+              take: 10, // Limit orders per customer
             },
           },
           orderBy: { name: "asc" },
+          take: limit,
         });
       }
 
@@ -280,7 +318,7 @@ export class ReportService {
         const productFrequency = {};
         customer.orders.forEach((order) => {
           order.items.forEach((item) => {
-            const productName = item.product.name;
+            const productName = item.product?.name || "Unknown";
             productFrequency[productName] =
               (productFrequency[productName] || 0) + (item.qty || 0);
           });
@@ -304,8 +342,8 @@ export class ReportService {
           customerId: customer.id,
           customerName: customer.name,
           contact: {
-            email: customer.email,
-            phone: customer.phone,
+            email: customer.email || "No email",
+            phone: customer.phone || "No phone",
           },
           summary: {
             totalSpent: Math.round(totalSpent * 100) / 100,
@@ -323,12 +361,12 @@ export class ReportService {
           },
           favoriteProducts,
           recentActivity,
-          allOrders: customer.orders.map((order) => ({
+          allOrders: customer.orders.slice(0, 10).map((order) => ({
             id: order.id,
             date: order.createdAt.toISOString(),
             total: order.total || 0,
             items: order.items.map((item) => ({
-              product: item.product.name,
+              product: item.product?.name || "Unknown",
               quantity: item.qty || 0,
               price: item.price || 0,
             })),
@@ -336,22 +374,39 @@ export class ReportService {
         };
       });
 
-      return {
+      const result = {
         generatedAt: new Date().toISOString(),
-        [customerId ? "customer" : "customers"]: customerId
-          ? customerReports[0]
-          : customerReports.slice(0, limit),
       };
+
+      if (customerId) {
+        result.customer = customerReports[0];
+      } else {
+        result.customers = customerReports;
+        result.summary = {
+          totalCustomers: customerReports.length,
+          totalOrders: customerReports.reduce(
+            (sum, c) => sum + c.summary.orderCount,
+            0
+          ),
+          totalRevenue: customerReports.reduce(
+            (sum, c) => sum + c.summary.totalSpent,
+            0
+          ),
+        };
+      }
+
+      return result;
     } catch (error) {
-      console.error("Customer history report error:", error);
+      console.error("❌ Customer history report error:", error.message);
       return {
         generatedAt: new Date().toISOString(),
+        error: error.message,
         customers: [],
       };
     }
   }
 
-  // SALES TREND REPORT (Weekly/Monthly)
+  // SALES TREND REPORT (Weekly/Monthly) - FIXED: Added proper date handling
   static async getSalesTrendReport(period = "weekly", weeks = 8) {
     try {
       const endDate = new Date();
@@ -362,6 +417,12 @@ export class ReportService {
       } else {
         startDate.setMonth(endDate.getMonth() - weeks);
       }
+
+      console.log(
+        `📊 Fetching ${period} sales trend from ${
+          startDate.toISOString().split("T")[0]
+        } to ${endDate.toISOString().split("T")[0]}`
+      );
 
       const orders = await prisma.order.findMany({
         where: {
@@ -382,13 +443,21 @@ export class ReportService {
         orderBy: { createdAt: "asc" },
       });
 
+      console.log(`📊 Found ${orders.length} orders for trend analysis`);
+
       // Group by time period
       const salesData = {};
       orders.forEach((order) => {
-        const dateKey =
-          period === "weekly"
-            ? this.getWeekNumber(order.createdAt)
-            : order.createdAt.toISOString().slice(0, 7); // YYYY-MM
+        let dateKey;
+        if (period === "weekly") {
+          dateKey = this.getWeekNumber(order.createdAt);
+        } else {
+          // Monthly
+          const date = new Date(order.createdAt);
+          dateKey = `${date.getFullYear()}-${(date.getMonth() + 1)
+            .toString()
+            .padStart(2, "0")}`;
+        }
 
         if (!salesData[dateKey]) {
           salesData[dateKey] = {
@@ -404,10 +473,11 @@ export class ReportService {
 
         // Track product sales
         order.items.forEach((item) => {
-          const productId = item.product.id;
+          const productId = item.product?.id || "unknown";
+          const productName = item.product?.name || "Unknown";
           if (!salesData[dateKey].products[productId]) {
             salesData[dateKey].products[productId] = {
-              name: item.product.name,
+              name: productName,
               quantity: 0,
               revenue: 0,
             };
@@ -418,16 +488,19 @@ export class ReportService {
         });
       });
 
-      const trend = Object.values(salesData).map((periodData) => ({
-        ...periodData,
-        avgOrderValue:
-          periodData.orderCount > 0
-            ? periodData.totalSales / periodData.orderCount
-            : 0,
-        topProducts: Object.values(periodData.products)
-          .sort((a, b) => b.revenue - a.revenue)
-          .slice(0, 3),
-      }));
+      // Convert to array and sort by period
+      const trend = Object.values(salesData)
+        .sort((a, b) => a.period.localeCompare(b.period))
+        .map((periodData) => ({
+          ...periodData,
+          avgOrderValue:
+            periodData.orderCount > 0
+              ? periodData.totalSales / periodData.orderCount
+              : 0,
+          topProducts: Object.values(periodData.products)
+            .sort((a, b) => b.revenue - a.revenue)
+            .slice(0, 3),
+        }));
 
       return {
         period,
@@ -437,30 +510,40 @@ export class ReportService {
         },
         trend,
         summary: {
-          totalRevenue: trend.reduce(
-            (sum, period) => sum + (period.totalSales || 0),
-            0
-          ),
+          totalRevenue:
+            Math.round(
+              trend.reduce((sum, period) => sum + (period.totalSales || 0), 0) *
+                100
+            ) / 100,
           totalOrders: trend.reduce(
             (sum, period) => sum + (period.orderCount || 0),
             0
           ),
-          avgWeeklyRevenue:
-            period === "weekly"
-              ? trend.reduce(
-                  (sum, period) => sum + (period.totalSales || 0),
-                  0
-                ) / (trend.length || 1)
-              : null,
+          avgPeriodRevenue:
+            trend.length > 0
+              ? Math.round(
+                  (trend.reduce((sum, p) => sum + p.totalSales, 0) /
+                    trend.length) *
+                    100
+                ) / 100
+              : 0,
         },
       };
     } catch (error) {
-      console.error("Sales trend report error:", error);
+      console.error("❌ Sales trend report error:", error.message);
       return {
         period,
-        dateRange: { start: "", end: "" },
+        dateRange: {
+          start: new Date().toISOString().split("T")[0],
+          end: new Date().toISOString().split("T")[0],
+        },
         trend: [],
-        summary: { totalRevenue: 0, totalOrders: 0, avgWeeklyRevenue: 0 },
+        summary: {
+          totalRevenue: 0,
+          totalOrders: 0,
+          avgPeriodRevenue: 0,
+        },
+        error: error.message,
       };
     }
   }
@@ -468,9 +551,13 @@ export class ReportService {
   // INVENTORY VALUATION REPORT
   static async getInventoryValuationReport() {
     try {
+      console.log(`📊 Fetching inventory valuation report`);
+
       const products = await prisma.product.findMany({
         orderBy: { name: "asc" },
       });
+
+      console.log(`📊 Found ${products.length} products`);
 
       const valuation = products.map((product) => ({
         ...product,
@@ -507,13 +594,13 @@ export class ReportService {
         },
         breakdown: {
           outOfStock: valuation.filter((p) => p.stock === 0).length,
-          lowStock: valuation.filter((p) => p.stock <= 5).length,
+          lowStock: valuation.filter((p) => p.stock <= 5 && p.stock > 0).length,
           healthyStock: valuation.filter((p) => p.stock > 5).length,
         },
         products: valuation.sort((a, b) => (b.value || 0) - (a.value || 0)), // Sort by highest value first
       };
     } catch (error) {
-      console.error("Inventory valuation report error:", error);
+      console.error("❌ Inventory valuation report error:", error.message);
       return {
         generatedAt: new Date().toISOString(),
         summary: {
@@ -524,6 +611,7 @@ export class ReportService {
         },
         breakdown: { outOfStock: 0, lowStock: 0, healthyStock: 0 },
         products: [],
+        error: error.message,
       };
     }
   }

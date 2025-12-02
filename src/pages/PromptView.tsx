@@ -18,6 +18,12 @@ import {
   Eye,
   HelpCircle,
   X,
+  ShoppingCart,
+  BarChart3,
+  TrendingUp,
+  DollarSign,
+  AlertTriangle,
+  History,
 } from "lucide-react";
 
 interface Message {
@@ -29,6 +35,8 @@ interface Message {
   needsConfirmation?: boolean;
   actionType?: string;
   customerData?: any;
+  productData?: any;
+  orderData?: any;
   fieldToEdit?: string;
 }
 
@@ -80,7 +88,7 @@ const PromptView = () => {
 
       console.log("Sending request:", requestBody);
 
-      const response = await fetch(`${API_BASE}/api/commands`, {
+      const response = await fetch(`${API_BASE}/api/command`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -105,6 +113,8 @@ const PromptView = () => {
           needsConfirmation: data.needsConfirmation,
           actionType: data.actionType,
           customerData: data.customerData,
+          productData: data.productData,
+          orderData: data.orderData,
           fieldToEdit: data.fieldToEdit,
         });
       } else {
@@ -131,6 +141,8 @@ const PromptView = () => {
     confirmed: boolean,
     actionType?: string,
     customerData?: any,
+    productData?: any,
+    orderData?: any,
     fieldToEdit?: string
   ) => {
     // Get the last message that needs confirmation
@@ -155,12 +167,14 @@ const PromptView = () => {
         confirmed,
         actionType: actionType || lastMessage?.actionType,
         customerData: customerData || lastMessage?.customerData,
+        productData: productData || lastMessage?.productData,
+        orderData: orderData || lastMessage?.orderData,
         fieldToEdit: fieldToEdit || lastMessage?.fieldToEdit,
       };
 
       console.log("Sending confirmation:", confirmBody);
 
-      const response = await fetch(`${API_BASE}/api/commands/confirm`, {
+      const response = await fetch(`${API_BASE}/api/command/confirm`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -203,6 +217,8 @@ const PromptView = () => {
       console.log("Confirmation message data:", {
         actionType: message.actionType,
         customerData: message.customerData,
+        productData: message.productData,
+        orderData: message.orderData,
         fieldToEdit: message.fieldToEdit,
         conversationId: conversationId,
       });
@@ -217,6 +233,8 @@ const PromptView = () => {
                   true,
                   message.actionType,
                   message.customerData,
+                  message.productData,
+                  message.orderData,
                   message.fieldToEdit
                 )
               }
@@ -322,6 +340,375 @@ const PromptView = () => {
         );
       }
 
+      // Render product details
+      if (data.product) {
+        const product = data.product;
+        return (
+          <div className="mt-3 bg-background rounded-lg p-4 border space-y-3">
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div>
+                <div className="text-muted-foreground text-xs">Product ID</div>
+                <div className="font-medium">{product.id}</div>
+              </div>
+              <div>
+                <div className="text-muted-foreground text-xs">Name</div>
+                <div className="font-medium">{product.name}</div>
+              </div>
+              <div className="col-span-2">
+                <div className="text-muted-foreground text-xs">Description</div>
+                <div className="font-medium">
+                  {product.description || "Not provided"}
+                </div>
+              </div>
+              <div>
+                <div className="text-muted-foreground text-xs">Price</div>
+                <div className="font-medium">${product.price?.toFixed(2)}</div>
+              </div>
+              <div>
+                <div className="text-muted-foreground text-xs">Stock</div>
+                <div
+                  className={`font-medium ${
+                    product.stock < 10 ? "text-red-600" : "text-green-600"
+                  }`}
+                >
+                  {product.stock}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      // Render order details
+      if (data.order) {
+        const order = data.order;
+        const itemsList = order.items?.map((item: any, idx: number) => (
+          <div key={idx} className="flex justify-between text-sm py-1">
+            <span>
+              {item.product?.name} × {item.qty}
+            </span>
+            <span>${((item.price || 0) * (item.qty || 0)).toFixed(2)}</span>
+          </div>
+        ));
+
+        return (
+          <div className="mt-3 bg-background rounded-lg p-4 border space-y-3">
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div>
+                <div className="text-muted-foreground text-xs">Order ID</div>
+                <div className="font-medium">{order.id}</div>
+              </div>
+              <div>
+                <div className="text-muted-foreground text-xs">Customer</div>
+                <div className="font-medium">{order.customer?.name}</div>
+              </div>
+              <div>
+                <div className="text-muted-foreground text-xs">
+                  Total Amount
+                </div>
+                <div className="font-medium">${order.total?.toFixed(2)}</div>
+              </div>
+              <div>
+                <div className="text-muted-foreground text-xs">Date</div>
+                <div className="font-medium">
+                  {new Date(order.createdAt).toLocaleDateString()}
+                </div>
+              </div>
+            </div>
+            {order.items && order.items.length > 0 && (
+              <div className="pt-3 border-t">
+                <div className="text-muted-foreground text-xs mb-2">Items:</div>
+                {itemsList}
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      // Render report dashboard
+      if (data.overview) {
+        return (
+          <div className="mt-3 bg-background rounded-lg p-4 border space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-green-50 dark:bg-green-950/20 rounded-lg p-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <DollarSign className="w-4 h-4 text-green-600" />
+                  <div className="text-xs text-muted-foreground">
+                    Today's Revenue
+                  </div>
+                </div>
+                <div className="text-xl font-bold text-green-700">
+                  ${data.overview.today?.revenue?.toFixed(2) || "0.00"}
+                </div>
+              </div>
+              <div className="bg-blue-50 dark:bg-blue-950/20 rounded-lg p-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <ShoppingCart className="w-4 h-4 text-blue-600" />
+                  <div className="text-xs text-muted-foreground">
+                    Today's Orders
+                  </div>
+                </div>
+                <div className="text-xl font-bold text-blue-700">
+                  {data.overview.today?.orders || 0}
+                </div>
+              </div>
+              <div className="bg-yellow-50 dark:bg-yellow-950/20 rounded-lg p-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <AlertTriangle className="w-4 h-4 text-yellow-600" />
+                  <div className="text-xs text-muted-foreground">
+                    Low Stock Items
+                  </div>
+                </div>
+                <div className="text-xl font-bold text-yellow-700">
+                  {data.overview.inventory?.lowStockItems || 0}
+                </div>
+              </div>
+              <div className="bg-purple-50 dark:bg-purple-950/20 rounded-lg p-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <BarChart3 className="w-4 h-4 text-purple-600" />
+                  <div className="text-xs text-muted-foreground">
+                    Inventory Value
+                  </div>
+                </div>
+                <div className="text-xl font-bold text-purple-700">
+                  ${data.overview.inventory?.totalValue?.toFixed(2) || "0.00"}
+                </div>
+              </div>
+            </div>
+
+            {/* Performance Indicator */}
+            <div className="pt-3 border-t">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">
+                  Today's Performance:
+                </span>
+                <span
+                  className={`px-2 py-1 rounded-full text-xs font-medium ${
+                    data.alerts?.todayPerformance === "good"
+                      ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+                      : data.alerts?.todayPerformance === "average"
+                      ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
+                      : "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
+                  }`}
+                >
+                  {data.alerts?.todayPerformance === "good"
+                    ? "✅ Good"
+                    : data.alerts?.todayPerformance === "average"
+                    ? "⚠️ Average"
+                    : "❌ Needs Attention"}
+                </span>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      // Render sales report
+      if (data.summary && data.summary.totalSales !== undefined) {
+        return (
+          <div className="mt-3 bg-background rounded-lg p-4 border space-y-3">
+            <div className="grid grid-cols-3 gap-4">
+              <div className="bg-green-50 dark:bg-green-950/20 rounded-lg p-3">
+                <div className="text-xs text-muted-foreground mb-1">
+                  Total Sales
+                </div>
+                <div className="text-lg font-bold text-green-700">
+                  ${data.summary.totalSales?.toFixed(2) || "0.00"}
+                </div>
+              </div>
+              <div className="bg-blue-50 dark:bg-blue-950/20 rounded-lg p-3">
+                <div className="text-xs text-muted-foreground mb-1">Orders</div>
+                <div className="text-lg font-bold text-blue-700">
+                  {data.summary.orderCount || 0}
+                </div>
+              </div>
+              <div className="bg-purple-50 dark:bg-purple-950/20 rounded-lg p-3">
+                <div className="text-xs text-muted-foreground mb-1">
+                  Avg Order
+                </div>
+                <div className="text-lg font-bold text-purple-700">
+                  ${data.summary.avgOrderValue?.toFixed(2) || "0.00"}
+                </div>
+              </div>
+            </div>
+
+            {data.topProducts && data.topProducts.length > 0 && (
+              <div className="pt-3 border-t">
+                <div className="text-sm font-medium mb-2">Top Products:</div>
+                <div className="space-y-2">
+                  {data.topProducts
+                    .slice(0, 3)
+                    .map((product: any, idx: number) => (
+                      <div
+                        key={idx}
+                        className="flex justify-between items-center"
+                      >
+                        <span className="text-sm">{product.name}</span>
+                        <span className="font-medium">
+                          ${product.totalSales?.toFixed(2) || "0.00"}
+                        </span>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      // Render low stock report
+      if (data.products && Array.isArray(data.products)) {
+        const criticalItems = data.products.filter(
+          (p: any) => p.urgency === "high"
+        );
+
+        return (
+          <div className="mt-3 bg-background rounded-lg p-4 border space-y-3">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-red-50 dark:bg-red-950/20 rounded-lg p-3">
+                <div className="text-xs text-muted-foreground mb-1">
+                  Low Stock Items
+                </div>
+                <div className="text-lg font-bold text-red-700">
+                  {data.summary?.totalLowStock || 0}
+                </div>
+              </div>
+              <div className="bg-yellow-50 dark:bg-yellow-950/20 rounded-lg p-3">
+                <div className="text-xs text-muted-foreground mb-1">
+                  Out of Stock
+                </div>
+                <div className="text-lg font-bold text-yellow-700">
+                  {data.summary?.outOfStock || 0}
+                </div>
+              </div>
+            </div>
+
+            {criticalItems.length > 0 && (
+              <div className="pt-3 border-t">
+                <div className="text-sm font-medium mb-2">Critical Items:</div>
+                <div className="space-y-2">
+                  {criticalItems
+                    .slice(0, 5)
+                    .map((product: any, idx: number) => (
+                      <div
+                        key={idx}
+                        className="flex justify-between items-center"
+                      >
+                        <div>
+                          <span className="text-sm font-medium">
+                            {product.name}
+                          </span>
+                          <div className="text-xs text-muted-foreground">
+                            {product.reorderSuggestion}
+                          </div>
+                        </div>
+                        <span
+                          className={`font-bold ${
+                            product.stock === 0
+                              ? "text-red-600"
+                              : "text-yellow-600"
+                          }`}
+                        >
+                          {product.stock} left
+                        </span>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      // Render inventory valuation
+      if (data.summary && data.summary.totalInventoryValue !== undefined) {
+        return (
+          <div className="mt-3 bg-background rounded-lg p-4 border space-y-3">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-green-50 dark:bg-green-950/20 rounded-lg p-3">
+                <div className="text-xs text-muted-foreground mb-1">
+                  Total Value
+                </div>
+                <div className="text-lg font-bold text-green-700">
+                  ${data.summary.totalInventoryValue?.toFixed(2) || "0.00"}
+                </div>
+              </div>
+              <div className="bg-blue-50 dark:bg-blue-950/20 rounded-lg p-3">
+                <div className="text-xs text-muted-foreground mb-1">
+                  Total Items
+                </div>
+                <div className="text-lg font-bold text-blue-700">
+                  {data.summary.totalItems || 0}
+                </div>
+              </div>
+            </div>
+
+            {data.topValuable && data.topValuable.length > 0 && (
+              <div className="pt-3 border-t">
+                <div className="text-sm font-medium mb-2">
+                  Most Valuable Items:
+                </div>
+                <div className="space-y-2">
+                  {data.topValuable
+                    .slice(0, 3)
+                    .map((item: any, idx: number) => (
+                      <div
+                        key={idx}
+                        className="flex justify-between items-center"
+                      >
+                        <div>
+                          <span className="text-sm font-medium">
+                            {item.name}
+                          </span>
+                          <div className="text-xs text-muted-foreground">
+                            Stock: {item.stock}
+                          </div>
+                        </div>
+                        <span className="font-medium text-green-700">
+                          ${item.totalValue?.toFixed(2) || "0.00"}
+                        </span>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      // Render sales trend
+      if (data.trends && Array.isArray(data.trends)) {
+        return (
+          <div className="mt-3 bg-background rounded-lg p-4 border space-y-3">
+            <div className="text-sm font-medium mb-2">Sales Trend:</div>
+            <div className="space-y-2">
+              {data.trends.slice(0, 5).map((trend: any, idx: number) => (
+                <div key={idx} className="flex justify-between items-center">
+                  <span className="text-sm">{trend.period}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">
+                      ${trend.totalSales?.toFixed(2) || "0.00"}
+                    </span>
+                    <span
+                      className={`text-xs px-2 py-1 rounded ${
+                        trend.change > 0
+                          ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+                          : trend.change < 0
+                          ? "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
+                          : "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200"
+                      }`}
+                    >
+                      {trend.change > 0 ? "+" : ""}
+                      {trend.change?.toFixed(1) || 0}%
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      }
+
       // Render customers list
       if (data.customers && Array.isArray(data.customers)) {
         return (
@@ -349,44 +736,28 @@ const PromptView = () => {
         );
       }
 
-      // Render orders for a customer
+      // Render orders list
       if (data.orders && Array.isArray(data.orders)) {
         return (
           <div className="mt-3 space-y-2">
-            <div className="text-sm font-medium text-muted-foreground">
-              Recent Orders:
-            </div>
             {data.orders.map((order: any, idx: number) => (
               <div key={idx} className="bg-background rounded-lg p-3 border">
                 <div className="flex justify-between items-start">
                   <div>
                     <div className="font-medium">Order {order.id}</div>
                     <div className="text-sm text-muted-foreground">
-                      Total: ${order.total?.toFixed(2)} •{" "}
+                      Customer: {order.customer?.name}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="font-medium">
+                      ${order.total?.toFixed(2)}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
                       {order.items?.length || 0} items
                     </div>
                   </div>
-                  <div className="text-right text-xs text-muted-foreground">
-                    {new Date(order.createdAt).toLocaleDateString()}
-                  </div>
                 </div>
-                {order.items && order.items.length > 0 && (
-                  <div className="mt-2 pt-2 border-t">
-                    {order.items.map((item: any, itemIdx: number) => (
-                      <div
-                        key={itemIdx}
-                        className="flex justify-between text-xs"
-                      >
-                        <span>
-                          {item.product?.name} × {item.qty}
-                        </span>
-                        <span>
-                          ${((item.price || 0) * (item.qty || 0)).toFixed(2)}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
             ))}
           </div>
@@ -610,6 +981,147 @@ const PromptView = () => {
               </div>
             </div>
 
+            {/* Order Commands */}
+            <div>
+              <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                <ShoppingCart className="w-5 h-5 text-purple-500" />
+                Order Management
+              </h3>
+              <div className="grid gap-3">
+                <div className="bg-accent/50 rounded-lg p-4">
+                  <h4 className="font-medium mb-2">Create Order</h4>
+                  <p className="text-sm text-muted-foreground mb-2">
+                    Create a new order for a customer
+                  </p>
+                  <div className="space-y-1 text-xs">
+                    <div className="font-mono bg-background px-2 py-1 rounded">
+                      Create order for c1
+                    </div>
+                    <div className="font-mono bg-background px-2 py-1 rounded">
+                      New order for John
+                    </div>
+                    <div className="font-mono bg-background px-2 py-1 rounded">
+                      Add order for customer c2
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-accent/50 rounded-lg p-4">
+                  <h4 className="font-medium mb-2">View Orders</h4>
+                  <p className="text-sm text-muted-foreground mb-2">
+                    List or view order details
+                  </p>
+                  <div className="space-y-1 text-xs">
+                    <div className="font-mono bg-background px-2 py-1 rounded">
+                      List orders
+                    </div>
+                    <div className="font-mono bg-background px-2 py-1 rounded">
+                      View order o1
+                    </div>
+                    <div className="font-mono bg-background px-2 py-1 rounded">
+                      Show orders for customer c1
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-accent/50 rounded-lg p-4">
+                  <h4 className="font-medium mb-2">Delete Order</h4>
+                  <p className="text-sm text-muted-foreground mb-2">
+                    Cancel or remove an order
+                  </p>
+                  <div className="space-y-1 text-xs">
+                    <div className="font-mono bg-background px-2 py-1 rounded">
+                      Delete order o1
+                    </div>
+                    <div className="font-mono bg-background px-2 py-1 rounded">
+                      Cancel order o2
+                    </div>
+                    <div className="font-mono bg-background px-2 py-1 rounded">
+                      Remove order o3
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Reports Commands */}
+            <div>
+              <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                <BarChart3 className="w-5 h-5 text-orange-500" />
+                Reports & Analytics
+              </h3>
+              <div className="grid gap-3">
+                <div className="bg-accent/50 rounded-lg p-4">
+                  <h4 className="font-medium mb-2">Dashboard</h4>
+                  <p className="text-sm text-muted-foreground mb-2">
+                    Get overview of business performance
+                  </p>
+                  <div className="space-y-1 text-xs">
+                    <div className="font-mono bg-background px-2 py-1 rounded">
+                      Show dashboard
+                    </div>
+                    <div className="font-mono bg-background px-2 py-1 rounded">
+                      Get dashboard
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-accent/50 rounded-lg p-4">
+                  <h4 className="font-medium mb-2">Sales Reports</h4>
+                  <p className="text-sm text-muted-foreground mb-2">
+                    Daily sales and trends
+                  </p>
+                  <div className="space-y-1 text-xs">
+                    <div className="font-mono bg-background px-2 py-1 rounded">
+                      Daily sales
+                    </div>
+                    <div className="font-mono bg-background px-2 py-1 rounded">
+                      Sales trend
+                    </div>
+                    <div className="font-mono bg-background px-2 py-1 rounded">
+                      Sales for 2024-01-15
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-accent/50 rounded-lg p-4">
+                  <h4 className="font-medium mb-2">Inventory Reports</h4>
+                  <p className="text-sm text-muted-foreground mb-2">
+                    Stock levels and valuation
+                  </p>
+                  <div className="space-y-1 text-xs">
+                    <div className="font-mono bg-background px-2 py-1 rounded">
+                      Low stock report
+                    </div>
+                    <div className="font-mono bg-background px-2 py-1 rounded">
+                      Low stock below 5
+                    </div>
+                    <div className="font-mono bg-background px-2 py-1 rounded">
+                      Inventory valuation
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-accent/50 rounded-lg p-4">
+                  <h4 className="font-medium mb-2">Customer Reports</h4>
+                  <p className="text-sm text-muted-foreground mb-2">
+                    Customer purchase history
+                  </p>
+                  <div className="space-y-1 text-xs">
+                    <div className="font-mono bg-background px-2 py-1 rounded">
+                      Customer history
+                    </div>
+                    <div className="font-mono bg-background px-2 py-1 rounded">
+                      Customer history for c1
+                    </div>
+                    <div className="font-mono bg-background px-2 py-1 rounded">
+                      Purchase history
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             {/* How to Use */}
             <div className="bg-blue-50 dark:bg-blue-950/20 rounded-lg p-4">
               <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
@@ -637,6 +1149,10 @@ const PromptView = () => {
                 <div className="flex items-start gap-2">
                   <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
                   <p>Use product IDs (p1, p2) or names to reference products</p>
+                </div>
+                <div className="flex items-start gap-2">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
+                  <p>Use order IDs (o1, o2) to reference specific orders</p>
                 </div>
                 <div className="flex items-start gap-2">
                   <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
@@ -721,10 +1237,11 @@ const PromptView = () => {
                 <span>AI-Powered Assistant</span>
               </div>
               <h2 className="text-3xl sm:text-4xl font-bold">
-                Customer & Product Management
+                Customer, Product & Order Management
               </h2>
               <p className="text-muted-foreground text-lg">
-                Manage customers and products with natural language commands
+                Manage customers, products, orders, and reports with natural
+                language commands
               </p>
               <Button
                 onClick={() => setShowHelpModal(true)}
@@ -793,7 +1310,7 @@ const PromptView = () => {
           <div className="border-t pt-4">
             <div className="flex gap-2">
               <Textarea
-                placeholder="Type your command... (e.g., 'Create customer John', 'Edit product p1', 'List customers', 'View product p1')"
+                placeholder="Type your command... (e.g., 'Show dashboard', 'Create customer John', 'Daily sales', 'Low stock report', 'Create order for c1')"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => {
@@ -822,6 +1339,12 @@ const PromptView = () => {
             {/* Quick Actions */}
             <div className="flex flex-wrap gap-2 mt-3">
               {[
+                "Show dashboard",
+                "Daily sales",
+                "Low stock report",
+                "Inventory valuation",
+                "Sales trend",
+                "Customer history",
                 "Create customer Alex",
                 "Edit customer c1",
                 "Delete customer c2",
@@ -830,6 +1353,10 @@ const PromptView = () => {
                 "Create product Laptop",
                 "Edit product p1",
                 "List products",
+                "Create order for c1",
+                "View order o1",
+                "List orders",
+                "Delete order o2",
               ].map((example) => (
                 <Button
                   key={example}

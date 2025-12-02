@@ -81,6 +81,9 @@ const ConfirmRequestSchema = z.object({
   fieldToEdit: z.string().optional(),
 });
 
+// API Base URL for reports
+const API_BASE = process.env.API_BASE || "http://localhost:5000";
+
 // Generate conversation ID
 function generateConversationId() {
   return `conv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -474,6 +477,132 @@ function parseOrderCommand(text, context = null) {
   return null;
 }
 
+// Parse report commands
+function parseReportCommand(text, context = null) {
+  const lowerText = text.toLowerCase().trim();
+  console.log("Parsing report command:", text, "Context:", context);
+
+  // Dashboard
+  if (lowerText.match(/^(?:show|view|get)\s+dashboard$/i)) {
+    return {
+      intent: "show_dashboard",
+      response: "📊 Generating dashboard report...",
+      actionType: "show_dashboard",
+      domain: "report",
+    };
+  }
+
+  // Daily Sales Report
+  if (
+    lowerText.match(/^(?:daily|today[']?s?)\s+sales(?:\s+report)?$/i) ||
+    lowerText.match(/^sales\s+(?:report|today)$/i)
+  ) {
+    return {
+      intent: "daily_sales",
+      response: "📈 Generating daily sales report...",
+      actionType: "daily_sales",
+      domain: "report",
+    };
+  }
+
+  // Sales Report with date
+  const salesDateMatch = lowerText.match(/^sales\s+(?:for|on)\s+(.+)$/i);
+  if (salesDateMatch) {
+    const dateParam = salesDateMatch[1].trim();
+    return {
+      intent: "sales_date",
+      response: `📈 Generating sales report for ${dateParam}...`,
+      date: dateParam,
+      actionType: "sales_date",
+      domain: "report",
+    };
+  }
+
+  // Low Stock Report
+  const lowStockMatch = lowerText.match(
+    /^(?:low|low\s+stock|out\s+of\s+stock)\s+report$/i
+  );
+  if (lowStockMatch) {
+    return {
+      intent: "low_stock",
+      response: "⚠️ Generating low stock report...",
+      actionType: "low_stock",
+      domain: "report",
+    };
+  }
+
+  // Low Stock with threshold
+  const lowStockThresholdMatch = lowerText.match(
+    /^low\s+stock\s+(?:below|under|less\s+than)\s+(\d+)$/i
+  );
+  if (lowStockThresholdMatch) {
+    const threshold = parseInt(lowStockThresholdMatch[1]);
+    return {
+      intent: "low_stock_threshold",
+      response: `⚠️ Generating low stock report (below ${threshold})...`,
+      threshold: threshold,
+      actionType: "low_stock_threshold",
+      domain: "report",
+    };
+  }
+
+  // Sales Trend
+  if (lowerText.match(/^sales\s+trend$/i)) {
+    return {
+      intent: "sales_trend",
+      response: "📈 Generating sales trend report...",
+      actionType: "sales_trend",
+      domain: "report",
+    };
+  }
+
+  // Inventory Valuation
+  if (lowerText.match(/^(?:inventory|stock)\s+valuation$/i)) {
+    return {
+      intent: "inventory_valuation",
+      response: "💰 Generating inventory valuation report...",
+      actionType: "inventory_valuation",
+      domain: "report",
+    };
+  }
+
+  // Customer Purchase History
+  const customerHistoryMatch = lowerText.match(
+    /^(?:customer|purchase)\s+history(?:\s+for\s+(.+))?$/i
+  );
+  if (customerHistoryMatch) {
+    const customerIdentifier = customerHistoryMatch[1]?.trim();
+    if (customerIdentifier) {
+      return {
+        intent: "customer_history",
+        response: `📋 Generating purchase history for customer "${customerIdentifier}"...`,
+        customerIdentifier: customerIdentifier,
+        actionType: "customer_history",
+        domain: "report",
+      };
+    }
+    return {
+      intent: "all_customer_history",
+      response: "📋 Generating customer purchase history...",
+      actionType: "all_customer_history",
+      domain: "report",
+    };
+  }
+
+  // Generic report command
+  if (lowerText.match(/^(?:show|generate|get)\s+report$/i)) {
+    return {
+      intent: "show_report_menu",
+      response:
+        "📊 Which report would you like?\n\n• Dashboard\n• Daily Sales\n• Low Stock\n• Sales Trend\n• Inventory Valuation\n• Customer History\n\nJust say what you need!",
+      actionType: "show_report_menu",
+      domain: "report",
+    };
+  }
+
+  return null;
+}
+
 // Main command parser
 function parseCommand(text, context = null) {
   // Try customer commands first
@@ -494,11 +623,17 @@ function parseCommand(text, context = null) {
     return orderPlan;
   }
 
+  // Try report commands fourth (NEW!)
+  const reportPlan = parseReportCommand(text, context);
+  if (reportPlan && reportPlan.intent !== "unknown") {
+    return reportPlan;
+  }
+
   // Default response
   return {
     intent: "unknown",
     response:
-      "I can help you with customer, product, or order management. Try:\n\n**Customers:**\n• 'Create customer John'\n• 'Edit customer c1'  \n• 'Delete customer c2'\n• 'List customers'\n• 'View customer c1'\n\n**Products:**\n• 'Create product Laptop'\n• 'Edit product p1'\n• 'Delete product p2'\n• 'List products'\n• 'View product p1'\n\n**Orders:**\n• 'Create order for c1'\n• 'View order o1'\n• 'Delete order o2'\n• 'List orders'\n• 'View orders for c1'",
+      "I can help you with customer, product, order management, or reports. Try:\n\n**Customers:**\n• 'Create customer John'\n• 'Edit customer c1'  \n• 'Delete customer c2'\n• 'List customers'\n• 'View customer c1'\n\n**Products:**\n• 'Create product Laptop'\n• 'Edit product p1'\n• 'Delete product p2'\n• 'List products'\n• 'View product p1'\n\n**Orders:**\n• 'Create order for c1'\n• 'View order o1'\n• 'Delete order o2'\n• 'List orders'\n• 'View orders for c1'\n\n**Reports:**\n• 'Show dashboard'\n• 'Daily sales'\n• 'Low stock report'\n• 'Sales trend'\n• 'Inventory valuation'\n• 'Customer history'",
     actionType: "unknown",
   };
 }
@@ -1271,6 +1406,36 @@ async function validateOrderData(orderData) {
   return errors;
 }
 
+// Fetch report data from API
+async function fetchReportData(endpoint, params = {}) {
+  try {
+    const url = new URL(`${API_BASE}${endpoint}`);
+    Object.keys(params).forEach((key) => {
+      if (params[key] !== undefined && params[key] !== null) {
+        url.searchParams.append(key, params[key]);
+      }
+    });
+
+    console.log("📊 Fetching report from:", url.toString());
+
+    const response = await fetch(url.toString(), {
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data.data || data;
+  } catch (error) {
+    console.error("❌ Error fetching report:", error);
+    throw error;
+  }
+}
+
 // Main command endpoint
 router.post("/", async (req, res) => {
   try {
@@ -1766,6 +1931,239 @@ router.post("/", async (req, res) => {
           responseData.data = { customer: customer, orders: orders };
         }
       }
+    }
+    // REPORT INTENTS
+    else if (plan.intent === "show_dashboard") {
+      try {
+        const dashboard = await fetchReportData("/api/reports/dashboard");
+
+        responseData.response =
+          `📊 Dashboard Report:\n\n` +
+          `💰 Today's Revenue: $${
+            dashboard.overview?.today?.revenue?.toFixed(2) || 0
+          }\n` +
+          `🛒 Today's Orders: ${dashboard.overview?.today?.orders || 0}\n` +
+          `📦 Low Stock Items: ${
+            dashboard.overview?.inventory?.lowStockItems || 0
+          }\n` +
+          `💎 Inventory Value: $${
+            dashboard.overview?.inventory?.totalValue?.toFixed(2) || 0
+          }\n\n` +
+          `Status: ${
+            dashboard.alerts?.todayPerformance === "good"
+              ? "✅ Good"
+              : dashboard.alerts?.todayPerformance === "average"
+              ? "⚠️ Average"
+              : "❌ Needs Attention"
+          }`;
+
+        responseData.data = dashboard;
+      } catch (error) {
+        console.error("❌ Dashboard error:", error);
+        responseData.response =
+          "❌ Failed to fetch dashboard data. Please try again.";
+      }
+    } else if (plan.intent === "daily_sales") {
+      try {
+        const salesData = await fetchReportData("/api/reports/sales/daily");
+
+        responseData.response =
+          `📈 Daily Sales Report:\n\n` +
+          `💰 Total Sales: $${
+            salesData.summary?.totalSales?.toFixed(2) || 0
+          }\n` +
+          `🛒 Orders: ${salesData.summary?.orderCount || 0}\n` +
+          `📊 Average Order: $${
+            salesData.summary?.avgOrderValue?.toFixed(2) || 0
+          }\n\n`;
+
+        if (salesData.topProducts && salesData.topProducts.length > 0) {
+          responseData.response += `Top Products:\n${salesData.topProducts
+            .slice(0, 3)
+            .map((p) => `  • ${p.name}: $${p.totalSales?.toFixed(2) || 0}`)
+            .join("\n")}`;
+        }
+
+        responseData.data = salesData;
+      } catch (error) {
+        console.error("❌ Daily sales error:", error);
+        responseData.response =
+          "❌ Failed to fetch daily sales data. Please try again.";
+      }
+    } else if (plan.intent === "sales_date") {
+      try {
+        const salesData = await fetchReportData("/api/reports/sales/daily", {
+          date: plan.date,
+        });
+
+        responseData.response =
+          `📈 Sales Report for ${plan.date}:\n\n` +
+          `💰 Total Sales: $${
+            salesData.summary?.totalSales?.toFixed(2) || 0
+          }\n` +
+          `🛒 Orders: ${salesData.summary?.orderCount || 0}\n`;
+
+        responseData.data = salesData;
+      } catch (error) {
+        console.error("❌ Sales date error:", error);
+        responseData.response = `❌ Failed to fetch sales data for ${plan.date}. Please check the date format (YYYY-MM-DD).`;
+      }
+    } else if (
+      plan.intent === "low_stock" ||
+      plan.intent === "low_stock_threshold"
+    ) {
+      try {
+        const threshold = plan.threshold || 10;
+        const stockData = await fetchReportData(
+          "/api/reports/inventory/low-stock",
+          { threshold }
+        );
+
+        const criticalItems = (stockData.products || []).filter(
+          (p) => p.urgency === "high"
+        );
+
+        responseData.response =
+          `⚠️ Low Stock Report (Below ${threshold}):\n\n` +
+          `📦 Total Low Stock: ${stockData.summary?.totalLowStock || 0}\n` +
+          `❌ Out of Stock: ${stockData.summary?.outOfStock || 0}\n`;
+
+        if (criticalItems.length > 0) {
+          responseData.response += `\nCritical Items (${
+            criticalItems.length
+          }):\n${criticalItems
+            .slice(0, 5)
+            .map(
+              (p) =>
+                `  • ${p.name}: ${p.stock} left (Reorder: ${p.reorderSuggestion})`
+            )
+            .join("\n")}`;
+        }
+
+        responseData.data = stockData;
+      } catch (error) {
+        console.error("❌ Low stock error:", error);
+        responseData.response =
+          "❌ Failed to fetch low stock report. Please try again.";
+      }
+    } else if (plan.intent === "sales_trend") {
+      try {
+        const trendData = await fetchReportData("/api/reports/sales/trend");
+
+        responseData.response = `📈 Sales Trend Report (Last ${
+          trendData.periods?.length || 0
+        } weeks):\n\n`;
+
+        if (trendData.trends && trendData.trends.length > 0) {
+          trendData.trends.slice(0, 5).forEach((trend) => {
+            const arrow =
+              trend.change > 0 ? "📈" : trend.change < 0 ? "📉" : "➡️";
+            responseData.response += `${arrow} ${trend.period}: $${
+              trend.totalSales?.toFixed(2) || 0
+            } (${trend.change > 0 ? "+" : ""}${
+              trend.change?.toFixed(1) || 0
+            }%)\n`;
+          });
+        }
+
+        responseData.data = trendData;
+      } catch (error) {
+        console.error("❌ Sales trend error:", error);
+        responseData.response =
+          "❌ Failed to fetch sales trend data. Please try again.";
+      }
+    } else if (plan.intent === "inventory_valuation") {
+      try {
+        const valuationData = await fetchReportData(
+          "/api/reports/inventory/valuation"
+        );
+
+        responseData.response =
+          `💰 Inventory Valuation Report:\n\n` +
+          `💎 Total Value: $${
+            valuationData.summary?.totalInventoryValue?.toFixed(2) || 0
+          }\n` +
+          `📦 Total Items: ${valuationData.summary?.totalItems || 0}\n` +
+          `🏷️ Average Value per Item: $${
+            valuationData.summary?.avgValuePerItem?.toFixed(2) || 0
+          }\n`;
+
+        if (valuationData.topValuable && valuationData.topValuable.length > 0) {
+          responseData.response += `\nMost Valuable Items:\n${valuationData.topValuable
+            .slice(0, 3)
+            .map(
+              (item) =>
+                `  • ${item.name}: $${
+                  item.totalValue?.toFixed(2) || 0
+                } (Stock: ${item.stock})`
+            )
+            .join("\n")}`;
+        }
+
+        responseData.data = valuationData;
+      } catch (error) {
+        console.error("❌ Inventory valuation error:", error);
+        responseData.response =
+          "❌ Failed to fetch inventory valuation. Please try again.";
+      }
+    } else if (
+      plan.intent === "customer_history" ||
+      plan.intent === "all_customer_history"
+    ) {
+      try {
+        const params = {};
+        if (plan.intent === "customer_history" && plan.customerIdentifier) {
+          params.customerId = plan.customerIdentifier;
+        }
+        params.limit = 10;
+
+        const historyData = await fetchReportData(
+          "/api/reports/customers/history",
+          params
+        );
+
+        if (plan.intent === "customer_history") {
+          responseData.response =
+            `📋 Purchase History for Customer "${plan.customerIdentifier}":\n\n` +
+            `🛒 Total Orders: ${historyData.summary?.totalOrders || 0}\n` +
+            `💰 Total Spent: $${
+              historyData.summary?.totalSpent?.toFixed(2) || 0
+            }\n` +
+            `📊 Avg Order Value: $${
+              historyData.summary?.avgOrderValue?.toFixed(2) || 0
+            }\n`;
+        } else {
+          responseData.response =
+            `📋 Customer Purchase History:\n\n` +
+            `👥 Total Customers: ${
+              historyData.summary?.totalCustomers || 0
+            }\n` +
+            `🛒 Total Orders: ${historyData.summary?.totalOrders || 0}\n` +
+            `💰 Total Revenue: $${
+              historyData.summary?.totalRevenue?.toFixed(2) || 0
+            }\n`;
+        }
+
+        if (historyData.topCustomers && historyData.topCustomers.length > 0) {
+          responseData.response += `\nTop Customers:\n${historyData.topCustomers
+            .slice(0, 3)
+            .map(
+              (c) =>
+                `  • ${c.name}: $${c.totalSpent?.toFixed(2) || 0} (${
+                  c.orderCount
+                } orders)`
+            )
+            .join("\n")}`;
+        }
+
+        responseData.data = historyData;
+      } catch (error) {
+        console.error("❌ Customer history error:", error);
+        responseData.response =
+          "❌ Failed to fetch customer history. Please try again.";
+      }
+    } else if (plan.intent === "show_report_menu") {
+      responseData.response = plan.response;
     } else if (plan.intent === "unknown") {
       responseData.response = plan.response;
     }
@@ -2166,7 +2564,8 @@ router.get("/health", (req, res) => {
     status: "ok",
     activeConversations: activeConversations,
     totalConversations: conversationStore.size,
-    message: "Customer, product, and order management service is running",
+    message:
+      "Customer, product, order, and report management service is running",
   });
 });
 

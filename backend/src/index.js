@@ -9,20 +9,20 @@ import { errorHandler } from "./middleware/errorHandler.js";
 import authRoutes from "./routes/auth.js";
 import prisma from "./utils/db.js";
 import cors from "cors";
-
+import { rateLimit } from "express-rate-limit";
 const app = express();
 // ---- GLOBAL RATE LIMITER ----
 const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 500,
   standardHeaders: true,
-  legacyHeaders: false
+  legacyHeaders: false,
 });
 
 app.use(express.json());
 app.use(
   cors({
-    origin: "http://localhost:8080", // Your frontend URL
+    origin: "http://localhost:8080", // This is correct, keep it
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
     allowedHeaders: ["Content-Type", "Authorization"],
@@ -86,7 +86,7 @@ app.use((req, res, next) => {
 // Global error handler
 app.use(errorHandler);
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, async () => {
   console.log(`🚀 Server running on port ${PORT}`);
