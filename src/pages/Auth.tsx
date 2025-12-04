@@ -9,6 +9,7 @@ import { Boxes, Eye, EyeOff, Icon, Loader, Package } from 'lucide-react';
 import { GridPattern } from '@/components/ui/GridBg';
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
+import { useNavigate } from 'react-router-dom';
 
 const Auth = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -19,15 +20,20 @@ const Auth = () => {
 
   const { login, register } = useStore();
   const [isLoading, setIsLoading] = useState(false);
-
+  const navigate =  useNavigate();
   const handleSubmit = (e) => {
     e.preventDefault();
     setIsLoading(true);
     // Simulate async operation
     setTimeout(() => {
       setIsLoading(false);
-       if (isLogin) login(email, password);
-    else register(email, password, name);
+       if (isLogin) {
+         login(email, password);
+         navigate('/');
+       } else {
+         register(email, password, name);
+         navigate('/');
+       }
     }, 1000);
    
   };
@@ -99,19 +105,19 @@ const Auth = () => {
           <div className="rounded-none p-8 space-y-6 border-gray-400 border-2 border-dashed">
             {/* Mobile logo */}
            <div className="flex justify-between items-center gap-2 sm:gap-3">
-            <div className='flex gap-2'>
-            <div className="w-6 h-6 sm:w-8 sm:h-8 bg-primary  flex items-center justify-center">
+      <div className='flex gap-2'>
+          <div className="w-6 h-6 sm:w-8 sm:h-8 bg-primary  flex items-center justify-center">
               <Boxes className="w-4 h-4 sm:w-5 sm:h-5 text-primary-foreground" />
-            </div>
+          </div>
             <h1 className="text-lg sm:text-xl font-light italic tracking-tight">
               Peninsula
 
             </h1>
-            </div>
+          </div>
             <p className="text-muted-foreground text-sm font-mono">
               Auth 
             </p>
-          </div>
+        </div>
          <Separator className="my-2 bg-black/30" />
 
 

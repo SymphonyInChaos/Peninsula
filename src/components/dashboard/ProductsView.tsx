@@ -144,6 +144,25 @@ const ProductsView = () => {
         </div>
 
         {/* Products Table - Desktop */}
+         {/* Summary Stats */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+          <div className="bg-card shadow-soft rounded-2xl p-4 sm:p-6">
+            <div className="text-xs sm:text-sm text-muted-foreground mb-1">Total Products</div>
+            <div className="text-2xl sm:text-3xl font-bold">{transformedProducts.length}</div>
+          </div>
+          <div className="bg-card shadow-soft rounded-2xl p-4 sm:p-6">
+            <div className="text-xs sm:text-sm text-muted-foreground mb-1">Low Stock Items</div>
+            <div className="text-2xl sm:text-3xl font-bold text-yellow-600">
+              {transformedProducts.filter((p) => p.status === 'low-stock').length}
+            </div>
+          </div>
+          <div className="bg-card shadow-soft rounded-2xl p-4 sm:p-6">
+            <div className="text-xs sm:text-sm text-muted-foreground mb-1">Out of Stock</div>
+            <div className="text-2xl sm:text-3xl font-bold text-red-600">
+              {transformedProducts.filter((p) => p.status === 'out-of-stock').length}
+            </div>
+          </div>
+        </div>
         <div className="hidden md:block bg-card shadow-soft rounded-2xl overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -273,25 +292,7 @@ const ProductsView = () => {
           )}
         </div>
 
-        {/* Summary Stats */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-          <div className="bg-card shadow-soft rounded-2xl p-4 sm:p-6">
-            <div className="text-xs sm:text-sm text-muted-foreground mb-1">Total Products</div>
-            <div className="text-2xl sm:text-3xl font-bold">{transformedProducts.length}</div>
-          </div>
-          <div className="bg-card shadow-soft rounded-2xl p-4 sm:p-6">
-            <div className="text-xs sm:text-sm text-muted-foreground mb-1">Low Stock Items</div>
-            <div className="text-2xl sm:text-3xl font-bold text-yellow-600">
-              {transformedProducts.filter((p) => p.status === 'low-stock').length}
-            </div>
-          </div>
-          <div className="bg-card shadow-soft rounded-2xl p-4 sm:p-6">
-            <div className="text-xs sm:text-sm text-muted-foreground mb-1">Out of Stock</div>
-            <div className="text-2xl sm:text-3xl font-bold text-red-600">
-              {transformedProducts.filter((p) => p.status === 'out-of-stock').length}
-            </div>
-          </div>
-        </div>
+       
       </div>
 
       <AnimatePresence>

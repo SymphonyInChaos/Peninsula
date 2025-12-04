@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -18,6 +18,9 @@ import Auth from "./pages/Auth";
 import ProtectedRoute from "./components/ProtectedRoutes";
 import Dashboard from "./pages/Dashboard";
 import DashboardLayout from "./components/dashboard/Layout";
+import PromptView from "./pages/PromptView";
+import DashboardIndex from "./components/dashboard/Landing";
+import InventoryView from "./components/dashboard/InventoryView";
 
 const queryClient = new QueryClient();
 
@@ -31,15 +34,19 @@ const App = () => (
           {/* Public routes */}
           <Route path="/" element={<Index />} />
           <Route path="/login" element={<Auth />} />
-
+              <Route path="prompt" element={ <ProtectedRoute><PromptView /></ProtectedRoute>} />
+         
           {/* Protected dashboard */}
           <Route element={<ProtectedRoute />}>
+
             <Route path="/dashboard" element={<DashboardLayout />}>
-              <Route index element={<ProductsView />} />
+              <Route index element={<Navigate to="home" replace />} />
+              <Route path="home" element={<DashboardIndex />} />
               <Route path="products" element={<ProductsView />} />
               <Route path="orders" element={<OrdersView />} />
               <Route path="customers" element={<CustomersView />} />
               <Route path="reports" element={<ReportsView />} />
+              <Route path="inventory" element={<InventoryView />} />
             </Route>
           </Route>
 

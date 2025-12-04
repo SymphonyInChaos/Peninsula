@@ -30,6 +30,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { GridPattern } from "@/components/ui/GridBg";
 import { cn } from "@/lib/utils";
+import { useNavigate } from "react-router-dom";
 
 interface Message {
   id: string;
@@ -53,7 +54,7 @@ const PromptView = () => {
   const [showCommand, setShowCommand] = useState(false);
   const { toggleViewMode, logout } = useStore();
   const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
-
+ const navigate = useNavigate();
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
@@ -701,7 +702,7 @@ const PromptView = () => {
             </Button>
             <Button
               variant="outline"
-              onClick={toggleViewMode}
+              onClick={()=>{navigate('/dashboard')}}
               className="rounded-none text-xs sm:text-sm px-3 sm:px-4
              bg-gradient-to-br from-blue-300 via-white to-blue-200
              hover:bg-gradient-to-tl hover:from-blue-200 hover:via-white hover:to-blue-300
