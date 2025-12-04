@@ -6,7 +6,7 @@ import { Package, ShoppingCart, Users, TrendingUp, Menu, LogOut, Sparkles } from
 import ProductsView from '@/components/dashboard/ProductsView';
 import OrdersView from '@/components/dashboard/OrdersView';
 import CustomersView from '@/components/dashboard/CustomersView';
-
+import ReportView from '@/components/dashboard/ReportsView';
 type ActiveView = 'products' | 'orders' | 'customers' | 'reports';
 
 const Dashboard = () => {
@@ -30,11 +30,9 @@ const Dashboard = () => {
       case 'customers':
         return <CustomersView />;
       case 'reports':
-        return (
-          <div className="flex items-center justify-center h-full">
-            <p className="text-muted-foreground">Reports view coming soon...</p>
-          </div>
-        );
+        return <ReportView />;
+      default:
+        return null;
     }
   };
 

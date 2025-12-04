@@ -1,79 +1,93 @@
 // middleware/errorHandler.js
 export class AppError extends Error {
-  constructor(message, statusCode = 500, details = null) {
+  constructor(message, statusCode = 500) {
     super(message);
     this.statusCode = statusCode;
-    this.details = details;
     this.isOperational = true;
-
     Error.captureStackTrace(this, this.constructor);
   }
 }
 
 export class ValidationError extends AppError {
-  constructor(errors) {
-    super("Validation failed", 400, errors);
-    this.name = "ValidationError";
-  }
-}
-
-export class StockError extends AppError {
-  constructor(message, productId, requested, available) {
-    super(message, 400, { productId, requested, available });
-    this.name = "StockError";
+  constructor(message = "Validation failed") {
+    super(message, 400);
   }
 }
 
 export class AuthError extends AppError {
   constructor(message = "Authentication required") {
     super(message, 401);
-    this.name = "AuthError";
   }
 }
 
 export class PermissionError extends AppError {
   constructor(message = "Insufficient permissions") {
     super(message, 403);
-    this.name = "PermissionError";
   }
 }
 
+export class NotFoundError extends AppError {
+  constructor(message = "Resource not found") {
+    super(message, 404);
+  }
+}
+
+export class StockError extends AppError {
+  constructor(message = "Insufficient stock") {
+    super(message, 400);
+  }
+}
+
+export class DatabaseError extends AppError {
+  constructor(message = "Database operation failed") {
+    super(message, 500);
+  }
+}
+
+// Global error handler middleware
 export const errorHandler = (err, req, res, next) => {
+  let error = { ...err };
+  error.message = err.message;
+
+  // Log error
   console.error("Error:", err);
 
-  let statusCode = err.statusCode || 500;
-  let message = err.message || "Internal server error";
-  let details = err.details || null;
-
-  // Handle different error types
-  if (err.name === "ZodError") {
-    statusCode = 400;
-    message = "Validation failed";
-    details = err.errors.map((error) => ({
-      field: error.path.join("."),
-      message: error.message,
-    }));
+  // Mongoose bad ObjectId
+  if (err.name === "CastError") {
+    const message = "Resource not found";
+    error = new NotFoundError(message);
   }
 
-  if (err.code === "P2002") {
-    statusCode = 409;
-    message = "Duplicate entry found";
-    const field = err.meta?.target?.[0];
-    details = field ? `A record with this ${field} already exists` : null;
+  // Mongoose duplicate key
+  if (err.code === 11000) {
+    const message = "Duplicate field value entered";
+    error = new ValidationError(message);
   }
 
-  if (err.code === "P2025") {
-    statusCode = 404;
-    message = "Record not found";
+  // Mongoose validation error
+  if (err.name === "ValidationError") {
+    const message = Object.values(err.errors)
+      .map((val) => val.message)
+      .join(", ");
+    error = new ValidationError(message);
   }
 
-  // Response structure
-  const response = {
+  // JWT errors
+  if (err.name === "JsonWebTokenError") {
+    error = new AuthError("Invalid token");
+  }
+
+  if (err.name === "TokenExpiredError") {
+    error = new AuthError("Token expired");
+  }
+
+  res.status(error.statusCode || 500).json({
     success: false,
-    message,
-    ...(details && { details }),
-    ...(process.env.NODE_ENV === "development" && { stack: err.stack }),
-  };
-
-  res.status(statusCode).json(response);
+    error: error.message || "Server Error",
+    ...(process.env.NODE_ENV === "development" && { stack: error.stack }),
+  });
 };
+
+// Async error handler wrapper
+export const asyncHandler = (fn) => (req, res, next) =>
+  Promise.resolve(fn(req, res, next)).catch(next);

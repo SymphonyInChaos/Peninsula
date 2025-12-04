@@ -1,41 +1,12 @@
-import { useStore } from '@/store/useStore';
-import Auth from './Auth';
-import PromptView from './PromptView';
-import Dashboard from './Dashboard';
-import { AnimatePresence, motion } from 'framer-motion';
+import { Navigate } from "react-router-dom";
+import { useStore } from "@/store/useStore";
 
 const Index = () => {
-  const { isAuthenticated, viewMode } = useStore();
+  const { isAuthenticated } = useStore();
 
-  if (!isAuthenticated) {
-    return <Auth />;
-  }
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
 
-  return (
-    <AnimatePresence mode="wait">
-      {viewMode === 'prompt' ? (
-        <motion.div
-          key="prompt"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.3 }}
-        >
-          <PromptView />
-        </motion.div>
-      ) : (
-        <motion.div
-          key="traditional"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.3 }}
-        >
-          <Dashboard />
-        </motion.div>
-      )}
-    </AnimatePresence>
-  );
+  return <Navigate to="/dashboard" replace />;
 };
 
 export default Index;
