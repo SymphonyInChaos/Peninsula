@@ -1,4 +1,3 @@
-// prisma/schema.prisma
 generator client {
   provider = "prisma-client-js"
 }
@@ -9,19 +8,24 @@ datasource db {
 }
 
 model Product {
-  id            String   @id @default(cuid())
+  id            String      @id @default(cuid())
   name          String
-  description   String?   // Added this field
-  category      String?   // Added this field
-  unit          String?   // Added this field
-  purchasePrice Float?    // Added this field (for internal cost)
-  price         Float     // Selling price
+  price         Float
   stock         Int
-  expiryDate    DateTime? // Added this field
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  category      String?
+  description   String?
+  expiryDate    DateTime?
+  purchasePrice Float?
+  unit          String?
+  costPrice     Float?      // ADD THIS
+  sku           String?     // ADD THIS
+  isActive      Boolean?    @default(true) // ADD THIS
+  minStockLevel Int?        @default(5)    // ADD THIS
+  reorderPoint  Int?        @default(10)   // ADD THIS
   OrderItem     OrderItem[]
-  
+
   @@map("products")
 }
 
@@ -31,20 +35,29 @@ model Customer {
   phone     String?
   email     String?  @unique
   createdAt DateTime @default(now())
+  updatedAt DateTime? @updatedAt // MAKE IT NULLABLE with ?
+  altPhone  String?  // ADD THIS
+  tags      String[] // ADD THIS
+  addresses Json?    // ADD THIS
   orders    Order[]
-  
+
   @@unique([phone, email])
   @@map("customers")
 }
 
 model Order {
-  id         String      @id @default(cuid())
-  customerId String?
-  total      Float
-  createdAt  DateTime    @default(now())
-  customer   Customer?   @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  items      OrderItem[]
-  
+  id               String      @id @default(cuid())
+  customerId       String?
+  total            Float
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime?   @updatedAt // MAKE IT NULLABLE with ?
+  paymentMethod    String?     @default("cash")
+  status           String?     @default("pending") // ADD THIS
+  paymentReference String?     // ADD THIS
+  cashierId        String?     // ADD THIS
+  items            OrderItem[]
+  customer         Customer?   @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
   @@map("orders")
 }
 
@@ -56,7 +69,7 @@ model OrderItem {
   price     Float
   order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product   Product @relation(fields: [productId], references: [id])
-  
+
   @@unique([orderId, productId])
   @@map("order_items")
 }
@@ -72,7 +85,7 @@ model AuditLog {
   userRole  String?
   timestamp DateTime @default(now())
   ipAddress String?
-  
+
   @@map("audit_logs")
 }
 
@@ -84,7 +97,7 @@ model User {
   name      String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  
+
   @@map("users")
 }
 

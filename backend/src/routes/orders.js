@@ -5,8 +5,9 @@ import { generateNextId } from "../utils/idGenerator.js";
 
 const router = Router();
 
+// CORRECTED: Changed 'customers' to 'customer'
 const orderIncludes = {
-  customer: true,
+  customer: true, // SINGULAR - matches your Prisma schema
   items: {
     include: {
       product: true,
@@ -68,7 +69,7 @@ router.get("/:id", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { customerId = null, items } = req.body;
+    const { customerId = null, items, paymentMethod = "cash" } = req.body;
 
     const normalizedItems = parseItems(items);
 
@@ -76,10 +77,19 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ message: "Order items are invalid" });
     }
 
-    // Validate order structure - REMOVED AWAIT
+    // Validate payment method
+    const validPaymentMethods = ["cash", "upi", "card", "other"];
+    const normalizedPaymentMethod = validPaymentMethods.includes(
+      paymentMethod.toLowerCase()
+    )
+      ? paymentMethod.toLowerCase()
+      : "cash";
+
+    // Validate order structure
     const validatedData = validateOrder({
       customerId,
       items: normalizedItems,
+      paymentMethod: normalizedPaymentMethod,
     });
 
     // If customerId is provided, check if customer exists
@@ -156,6 +166,7 @@ router.post("/", async (req, res) => {
           id,
           customerId: validatedData.customerId,
           total,
+          paymentMethod: validatedData.paymentMethod,
           items: {
             create: validatedData.items.map((item) => ({
               qty: item.qty,
@@ -186,7 +197,7 @@ router.post("/", async (req, res) => {
 
 router.put("/:id", async (req, res) => {
   try {
-    const { customerId, items } = req.body;
+    const { customerId, items, paymentMethod } = req.body;
 
     const normalizedItems = items === undefined ? undefined : parseItems(items);
 
@@ -197,12 +208,24 @@ router.put("/:id", async (req, res) => {
       return res.status(400).json({ message: "Order items are invalid" });
     }
 
-    // Validate order structure if items are provided - REMOVED AWAIT
+    // Validate payment method if provided
+    let normalizedPaymentMethod;
+    if (paymentMethod !== undefined) {
+      const validPaymentMethods = ["cash", "upi", "card", "other"];
+      normalizedPaymentMethod = validPaymentMethods.includes(
+        paymentMethod.toLowerCase()
+      )
+        ? paymentMethod.toLowerCase()
+        : "cash";
+    }
+
+    // Validate order structure if items are provided
     if (normalizedItems) {
       try {
         validateOrder({
           customerId: customerId !== undefined ? customerId : null,
           items: normalizedItems,
+          paymentMethod: normalizedPaymentMethod || "cash",
         });
       } catch (validationError) {
         return res.status(400).json({
@@ -236,6 +259,10 @@ router.put("/:id", async (req, res) => {
           }
         }
         updateData.customerId = customerId ?? null;
+      }
+
+      if (paymentMethod !== undefined) {
+        updateData.paymentMethod = normalizedPaymentMethod;
       }
 
       if (normalizedItems !== undefined) {
@@ -407,5 +434,427 @@ router.delete("/:id", async (req, res) => {
     res.status(500).json({ message: "Failed to delete order" });
   }
 });
+
+// New endpoint: Get payment method statistics
+router.get("/analytics/payment-methods", async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+
+    const where = {};
+    if (startDate || endDate) {
+      where.createdAt = {};
+      if (startDate) {
+        where.createdAt.gte = new Date(startDate);
+      }
+      if (endDate) {
+        where.createdAt.lte = new Date(endDate);
+      }
+    }
+
+    const orders = await prisma.order.findMany({
+      where,
+      select: {
+        paymentMethod: true,
+        total: true,
+        customerId: true,
+        createdAt: true,
+      },
+    });
+
+    // Calculate payment method statistics
+    const paymentStats = {
+      cash: { count: 0, amount: 0, orders: [] },
+      upi: { count: 0, amount: 0, orders: [] },
+      card: { count: 0, amount: 0, orders: [] },
+      other: { count: 0, amount: 0, orders: [] },
+    };
+
+    // Calculate channel statistics
+    const channelStats = {
+      online: { count: 0, amount: 0 },
+      offline: { count: 0, amount: 0 },
+    };
+
+    orders.forEach((order) => {
+      const paymentMethod = order.paymentMethod?.toLowerCase() || "cash";
+      const channel = order.customerId ? "online" : "offline";
+
+      // Update payment stats
+      if (paymentStats[paymentMethod]) {
+        paymentStats[paymentMethod].count += 1;
+        paymentStats[paymentMethod].amount += order.total || 0;
+        paymentStats[paymentMethod].orders.push(order);
+      } else {
+        paymentStats.other.count += 1;
+        paymentStats.other.amount += order.total || 0;
+        paymentStats.other.orders.push(order);
+      }
+
+      // Update channel stats
+      channelStats[channel].count += 1;
+      channelStats[channel].amount += order.total || 0;
+    });
+
+    // Calculate percentages
+    const totalOrders = orders.length;
+    const totalAmount = orders.reduce(
+      (sum, order) => sum + (order.total || 0),
+      0
+    );
+
+    const paymentSummary = Object.entries(paymentStats).map(
+      ([method, stats]) => ({
+        method,
+        count: stats.count,
+        amount: Math.round(stats.amount * 100) / 100,
+        percentage:
+          totalOrders > 0
+            ? Math.round((stats.count / totalOrders) * 10000) / 100
+            : 0,
+        avgOrderValue:
+          stats.count > 0
+            ? Math.round((stats.amount / stats.count) * 100) / 100
+            : 0,
+        recentOrders: stats.orders.slice(-5).map((order) => ({
+          id: order.id,
+          amount: order.total,
+          date: order.createdAt,
+        })),
+      })
+    );
+
+    const channelSummary = Object.entries(channelStats).map(
+      ([channel, stats]) => ({
+        channel,
+        count: stats.count,
+        amount: Math.round(stats.amount * 100) / 100,
+        percentage:
+          totalOrders > 0
+            ? Math.round((stats.count / totalOrders) * 10000) / 100
+            : 0,
+        avgOrderValue:
+          stats.count > 0
+            ? Math.round((stats.amount / stats.count) * 100) / 100
+            : 0,
+      })
+    );
+
+    // Get trends over time (last 7 days)
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+    const recentOrders = orders.filter(
+      (order) => new Date(order.createdAt) >= sevenDaysAgo
+    );
+
+    const dailyTrend = {};
+    recentOrders.forEach((order) => {
+      const date = order.createdAt.toISOString().split("T")[0];
+      if (!dailyTrend[date]) {
+        dailyTrend[date] = {
+          cash: 0,
+          upi: 0,
+          card: 0,
+          other: 0,
+          online: 0,
+          offline: 0,
+        };
+      }
+
+      const paymentMethod = order.paymentMethod?.toLowerCase() || "cash";
+      const channel = order.customerId ? "online" : "offline";
+
+      if (dailyTrend[date][paymentMethod] !== undefined) {
+        dailyTrend[date][paymentMethod] += 1;
+      } else {
+        dailyTrend[date].other += 1;
+      }
+
+      dailyTrend[date][channel] += 1;
+    });
+
+    res.json({
+      summary: {
+        totalOrders,
+        totalAmount: Math.round(totalAmount * 100) / 100,
+        avgOrderValue:
+          totalOrders > 0
+            ? Math.round((totalAmount / totalOrders) * 100) / 100
+            : 0,
+        dateRange: {
+          start: startDate || "all",
+          end: endDate || "all",
+        },
+      },
+      paymentMethods: paymentSummary.sort((a, b) => b.amount - a.amount),
+      channels: channelSummary,
+      dailyTrend: Object.entries(dailyTrend)
+        .map(([date, stats]) => ({
+          date,
+          ...stats,
+        }))
+        .sort((a, b) => a.date.localeCompare(b.date)),
+      insights: {
+        topPaymentMethod:
+          paymentSummary.sort((a, b) => b.amount - a.amount)[0]?.method ||
+          "cash",
+        dominantChannel:
+          channelSummary.sort((a, b) => b.amount - a.amount)[0]?.channel ||
+          "offline",
+        cashDominance:
+          paymentSummary.find((p) => p.method === "cash")?.percentage > 50,
+        onlinePenetration:
+          channelSummary.find((c) => c.channel === "online")?.percentage || 0,
+      },
+    });
+  } catch (error) {
+    console.error("Failed to fetch payment analytics", error);
+    res.status(500).json({ message: "Failed to fetch payment analytics" });
+  }
+});
+
+// New endpoint: Get channel performance
+router.get("/analytics/channels", async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+
+    const where = {};
+    if (startDate || endDate) {
+      where.createdAt = {};
+      if (startDate) {
+        where.createdAt.gte = new Date(startDate);
+      }
+      if (endDate) {
+        where.createdAt.lte = new Date(endDate);
+      }
+    }
+
+    const orders = await prisma.order.findMany({
+      where,
+      include: {
+        customer: {
+          select: { name: true },
+        },
+        items: {
+          include: {
+            product: {
+              select: { name: true, category: true },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    // Separate orders by channel
+    const onlineOrders = orders.filter((order) => order.customerId);
+    const offlineOrders = orders.filter((order) => !order.customerId);
+
+    // Calculate metrics for each channel
+    const calculateMetrics = (channelOrders, channelName) => {
+      const totalAmount = channelOrders.reduce(
+        (sum, order) => sum + (order.total || 0),
+        0
+      );
+      const orderCount = channelOrders.length;
+
+      // Time analysis
+      const hourlyBreakdown = Array(24).fill(0);
+      const weeklyBreakdown = Array(7).fill(0);
+
+      channelOrders.forEach((order) => {
+        const hour = new Date(order.createdAt).getHours();
+        const day = new Date(order.createdAt).getDay();
+        hourlyBreakdown[hour] += 1;
+        weeklyBreakdown[day] += 1;
+      });
+
+      // Product analysis
+      const productSales = {};
+      channelOrders.forEach((order) => {
+        order.items.forEach((item) => {
+          const productName = item.product?.name || "Unknown";
+          productSales[productName] =
+            (productSales[productName] || 0) + (item.qty || 0);
+        });
+      });
+
+      const topProducts = Object.entries(productSales)
+        .map(([name, quantity]) => ({ name, quantity }))
+        .sort((a, b) => b.quantity - a.quantity)
+        .slice(0, 5);
+
+      // Payment method analysis for this channel
+      const paymentMethods = {};
+      channelOrders.forEach((order) => {
+        const method = order.paymentMethod?.toLowerCase() || "cash";
+        paymentMethods[method] = (paymentMethods[method] || 0) + 1;
+      });
+
+      return {
+        channel: channelName,
+        metrics: {
+          totalOrders: orderCount,
+          totalAmount: Math.round(totalAmount * 100) / 100,
+          avgOrderValue:
+            orderCount > 0
+              ? Math.round((totalAmount / orderCount) * 100) / 100
+              : 0,
+          peakHour: hourlyBreakdown.indexOf(Math.max(...hourlyBreakdown)),
+          peakDay: [
+            "Sunday",
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+          ][weeklyBreakdown.indexOf(Math.max(...weeklyBreakdown))],
+        },
+        hourlyBreakdown,
+        weeklyBreakdown,
+        topProducts,
+        paymentMethods: Object.entries(paymentMethods).map(
+          ([method, count]) => ({
+            method,
+            count,
+            percentage:
+              orderCount > 0
+                ? Math.round((count / orderCount) * 10000) / 100
+                : 0,
+          })
+        ),
+      };
+    };
+
+    const onlineMetrics = calculateMetrics(onlineOrders, "online");
+    const offlineMetrics = calculateMetrics(offlineOrders, "offline");
+
+    // Calculate comparison metrics
+    const totalOrders = orders.length;
+    const totalAmount = orders.reduce(
+      (sum, order) => sum + (order.total || 0),
+      0
+    );
+
+    const comparison = {
+      orderShare: {
+        online: Math.round((onlineOrders.length / totalOrders) * 10000) / 100,
+        offline: Math.round((offlineOrders.length / totalOrders) * 10000) / 100,
+      },
+      revenueShare: {
+        online:
+          Math.round(
+            (onlineMetrics.metrics.totalAmount / totalAmount) * 10000
+          ) / 100,
+        offline:
+          Math.round(
+            (offlineMetrics.metrics.totalAmount / totalAmount) * 10000
+          ) / 100,
+      },
+      avgOrderValueComparison: {
+        online: onlineMetrics.metrics.avgOrderValue,
+        offline: offlineMetrics.metrics.avgOrderValue,
+        difference:
+          Math.round(
+            (onlineMetrics.metrics.avgOrderValue -
+              offlineMetrics.metrics.avgOrderValue) *
+              100
+          ) / 100,
+      },
+    };
+
+    res.json({
+      summary: {
+        totalOrders,
+        totalAmount: Math.round(totalAmount * 100) / 100,
+        dateRange: {
+          start: startDate || "all",
+          end: endDate || "all",
+        },
+      },
+      channels: {
+        online: onlineMetrics,
+        offline: offlineMetrics,
+      },
+      comparison,
+      recommendations: generateRecommendations(
+        onlineMetrics,
+        offlineMetrics,
+        comparison
+      ),
+    });
+  } catch (error) {
+    console.error("Failed to fetch channel analytics", error);
+    res.status(500).json({ message: "Failed to fetch channel analytics" });
+  }
+});
+
+// Helper function to generate channel recommendations
+function generateRecommendations(online, offline, comparison) {
+  const recommendations = [];
+
+  // Revenue share recommendations
+  if (comparison.revenueShare.online < 30) {
+    recommendations.push({
+      type: "revenue_growth",
+      channel: "online",
+      suggestion:
+        "Increase online presence through digital marketing and promotions",
+      priority: "high",
+    });
+  }
+
+  if (comparison.revenueShare.offline < 30) {
+    recommendations.push({
+      type: "revenue_growth",
+      channel: "offline",
+      suggestion: "Enhance in-store experience and implement loyalty programs",
+      priority: "high",
+    });
+  }
+
+  // Average order value recommendations
+  if (comparison.avgOrderValueComparison.difference > 20) {
+    recommendations.push({
+      type: "value_optimization",
+      channel: "offline",
+      suggestion: `Introduce bundle deals to increase offline average order value (currently ₹${offline.metrics.avgOrderValue})`,
+      priority: "medium",
+    });
+  } else if (comparison.avgOrderValueComparison.difference < -20) {
+    recommendations.push({
+      type: "value_optimization",
+      channel: "online",
+      suggestion: `Add premium products or minimum order discounts to increase online average order value (currently ₹${online.metrics.avgOrderValue})`,
+      priority: "medium",
+    });
+  }
+
+  // Time-based recommendations
+  if (online.metrics.peakHour !== offline.metrics.peakHour) {
+    recommendations.push({
+      type: "timing_optimization",
+      channels: "both",
+      suggestion: `Align promotions: Online peaks at ${online.metrics.peakHour}:00, Offline at ${offline.metrics.peakHour}:00`,
+      priority: "low",
+    });
+  }
+
+  // Product-based recommendations
+  const onlineTop = online.topProducts[0]?.name;
+  const offlineTop = offline.topProducts[0]?.name;
+
+  if (onlineTop && offlineTop && onlineTop !== offlineTop) {
+    recommendations.push({
+      type: "product_cross_promotion",
+      channels: "both",
+      suggestion: `Cross-promote top products: Feature "${onlineTop}" offline and "${offlineTop}" online`,
+      priority: "medium",
+    });
+  }
+
+  return recommendations;
+}
 
 export default router;
