@@ -6,6 +6,7 @@ import orderRoutes from "../src/routes/orders.js";
 import commandRoutes from "../src/routes/command.js";
 import reportRoutes from "../src/routes/report.js";
 import { errorHandler } from "./middleware/errorHandler.js";
+import stockMovementRoutes from "../src/routes/stock-movements.js";
 import authRoutes from "./routes/auth.js";
 import prisma from "./utils/db.js";
 import cors from "cors";
@@ -35,6 +36,7 @@ app.use("/api/orders", orderRoutes);
 app.use("/api/command", commandRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/stock-movements", stockMovementRoutes);
 
 // Health check with basic stats
 app.get("/health", async (req, res) => {
