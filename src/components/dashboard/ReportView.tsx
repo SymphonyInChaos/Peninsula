@@ -15,7 +15,6 @@ import {
   BarChart3,
   TrendingUp,
   Package,
-  Users,
   DollarSign,
   ShoppingCart,
   AlertTriangle,
@@ -28,7 +27,15 @@ import {
   Globe,
   LineChart,
   PieChart,
+  CalendarIcon,
 } from "lucide-react";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { format } from "date-fns"; // added format import
 import {
   AreaChart,
   BarChart,
@@ -37,7 +44,7 @@ import {
 } from "@tremor/react";
 import {
   api,
-  DashboardData,
+  type DashboardData,
   formatCurrency,
   formatPercentage,
   getPaymentMethodColor,
@@ -235,19 +242,23 @@ export default function ReportView() {
     generateFallbackDashboard()
   );
   const [isDemoMode, setIsDemoMode] = useState(false);
-  const [selectedDate, setSelectedDate] = useState<string>(
-    new Date().toISOString().split("T")[0]
-  );
-  const [dateRange, setDateRange] = useState<{ start: string; end: string }>({
-    start: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
-      .toISOString()
-      .split("T")[0],
-    end: new Date().toISOString().split("T")[0],
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [dateRange, setDateRange] = useState<{ start: Date; end: Date }>({
+    start: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+    end: new Date(),
   });
 
   useEffect(() => {
     fetchDashboardData();
   }, []);
+
+  useEffect(() => {
+    // Only refetch if the active tab is one that depends on the date range
+    // This prevents unnecessary refetches when switching tabs
+    if (activeTab === "analytics" || activeTab === "reports") {
+      fetchDashboardData();
+    }
+  }, [dateRange, selectedDate, activeTab]); // Added activeTab as dependency
 
   const fetchDashboardData = async () => {
     try {
@@ -310,7 +321,7 @@ export default function ReportView() {
         return;
       }
 
-      let url = `${API_BASE}/reports`;
+      const url = `${API_BASE}/reports`;
       let response;
 
       switch (type) {
@@ -354,7 +365,7 @@ export default function ReportView() {
     }
   };
 
-  const exportReport = async (type: string, format: string = "csv") => {
+  const exportReport = async (type: string, format = "csv") => {
     try {
       const token = localStorage.getItem("token");
       if (!token) {
@@ -364,13 +375,24 @@ export default function ReportView() {
 
       let params: any = {};
       if (type === "payment-analytics" || type === "channel-performance") {
-        params = { startDate: dateRange.start, endDate: dateRange.end };
+        // updated to use Date objects and format them correctly
+        params = {
+          startDate: format(dateRange.start, "yyyy-MM-dd"),
+          endDate: format(dateRange.end, "yyyy-MM-dd"),
+        };
+      }
+      // Add logic for other report types that might need date parameters
+      if (type === "daily-sales") {
+        params = {
+          date: format(selectedDate, "yyyy-MM-dd"),
+        };
       }
 
       const url =
         `${API_BASE}/reports/export/${type}?format=${format}` +
         (params.startDate ? `&startDate=${params.startDate}` : "") +
-        (params.endDate ? `&endDate=${params.endDate}` : "");
+        (params.endDate ? `&endDate=${params.endDate}` : "") +
+        (params.date ? `&date=${params.date}` : "");
 
       const response = await fetch(url, {
         headers: {
@@ -608,6 +630,46 @@ export default function ReportView() {
               animate={{ x: 0, opacity: 1 }}
               transition={{ delay: 0.3, duration: 0.5 }}
             >
+              <div className="flex items-center gap-2">
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className="rounded-xl justify-start text-left font-normal bg-transparent"
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {format(dateRange.start, "MMM dd")} -{" "}
+                      {format(dateRange.end, "MMM dd, yyyy")}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="end">
+                    <div className="p-3 space-y-3">
+                      <div>
+                        <p className="text-sm font-medium mb-2">Start Date</p>
+                        <Calendar
+                          mode="single"
+                          selected={dateRange.start}
+                          onSelect={(date) =>
+                            date && setDateRange({ ...dateRange, start: date })
+                          }
+                          initialFocus
+                        />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium mb-2">End Date</p>
+                        <Calendar
+                          mode="single"
+                          selected={dateRange.end}
+                          onSelect={(date) =>
+                            date && setDateRange({ ...dateRange, end: date })
+                          }
+                          initialFocus
+                        />
+                      </div>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              </div>
               <AnimatePresence>
                 {isDemoMode && (
                   <motion.div
@@ -1047,62 +1109,113 @@ export default function ReportView() {
 
             {/* Analytics Tab */}
             <TabsContent value="analytics" className="space-y-6">
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5 }}
+              >
+                <Card className="rounded-2xl border-border/40 shadow-lg overflow-hidden">
+                  <CardHeader className="bg-gradient-to-r from-blue-500/10 via-purple-500/10 to-pink-500/10">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle className="flex items-center gap-2">
+                          <TrendingUp className="w-5 h-5" />
+                          Hourly Sales Breakdown
+                        </CardTitle>
+                        <CardDescription>
+                          Sales performance throughout the day
+                        </CardDescription>
+                      </div>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="rounded-xl bg-transparent"
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {format(selectedDate, "MMM dd, yyyy")}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="end">
+                          <Calendar
+                            mode="single"
+                            selected={selectedDate}
+                            onSelect={(date) => date && setSelectedDate(date)}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="pt-6">
+                    <AreaChart
+                      className="h-72"
+                      data={hourlySalesData}
+                      index="Hour"
+                      categories={["Sales", "Orders", "NetSales"]}
+                      colors={["emerald", "blue", "violet"]}
+                      valueFormatter={formatCurrency}
+                      showLegend={true}
+                      showGridLines={true}
+                      showAnimation={true}
+                    />
+                  </CardContent>
+                </Card>
+              </motion.div>
+
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <motion.div
-                  initial={{ opacity: 0, x: -30 }}
+                  initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.8, duration: 0.5 }}
+                  transition={{ duration: 0.5, delay: 0.1 }}
                 >
-                  <Card className="border-border/50 hover:shadow-xl transition-shadow duration-300">
-                    <CardHeader>
+                  <Card className="rounded-2xl border-border/40 shadow-lg overflow-hidden">
+                    <CardHeader className="bg-gradient-to-r from-purple-500/10 to-pink-500/10">
                       <CardTitle className="flex items-center gap-2">
-                        <CreditCard className="w-5 h-5 text-purple-500" />
-                        Payment Methods Split
+                        <PieChart className="w-5 h-5" />
+                        Payment Method Split
                       </CardTitle>
                       <CardDescription>
-                        Distribution by payment method
+                        Distribution by payment type
                       </CardDescription>
                     </CardHeader>
-                    <CardContent className="flex items-center justify-center">
+                    <CardContent className="pt-6">
                       <DonutChart
-                        className="h-80"
+                        className="h-72"
                         data={paymentSplitData}
                         category="value"
                         index="name"
-                        colors={paymentSplitData.map((d) => d.color)}
-                        valueFormatter={(value) => `${value.toFixed(1)}%`}
+                        valueFormatter={formatPercentage}
+                        colors={["emerald", "blue", "amber", "rose"]}
                         showAnimation={true}
-                        showLabel={true}
                       />
                     </CardContent>
                   </Card>
                 </motion.div>
 
                 <motion.div
-                  initial={{ opacity: 0, x: 30 }}
+                  initial={{ opacity: 0, x: 20 }}
                   animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.9, duration: 0.5 }}
+                  transition={{ duration: 0.5, delay: 0.2 }}
                 >
-                  <Card className="border-border/50 hover:shadow-xl transition-shadow duration-300">
-                    <CardHeader>
+                  <Card className="rounded-2xl border-border/40 shadow-lg overflow-hidden">
+                    <CardHeader className="bg-gradient-to-r from-blue-500/10 to-cyan-500/10">
                       <CardTitle className="flex items-center gap-2">
-                        <Globe className="w-5 h-5 text-blue-500" />
-                        Channel Distribution
+                        <Globe className="w-5 h-5" />
+                        Channel Performance
                       </CardTitle>
-                      <CardDescription>
-                        Online vs Offline orders
-                      </CardDescription>
+                      <CardDescription>Online vs Offline sales</CardDescription>
                     </CardHeader>
-                    <CardContent className="flex items-center justify-center">
+                    <CardContent className="pt-6">
                       <DonutChart
-                        className="h-80"
+                        className="h-72"
                         data={channelSplitData}
                         category="value"
                         index="name"
-                        colors={channelSplitData.map((d) => d.color)}
-                        valueFormatter={(value) => `${value.toFixed(1)}%`}
+                        valueFormatter={formatPercentage}
+                        colors={["cyan", "orange"]}
                         showAnimation={true}
-                        showLabel={true}
                       />
                     </CardContent>
                   </Card>
@@ -1110,85 +1223,64 @@ export default function ReportView() {
               </div>
 
               <motion.div
-                initial={{ opacity: 0, y: 30 }}
+                initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 1.0, duration: 0.5 }}
+                transition={{ duration: 0.5, delay: 0.3 }}
               >
-                <Card className="border-border/50 hover:shadow-xl transition-shadow duration-300">
-                  <CardHeader>
+                <Card className="rounded-2xl border-border/40 shadow-lg overflow-hidden">
+                  <CardHeader className="bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-cyan-500/10">
                     <CardTitle className="flex items-center gap-2">
-                      <PieChart className="w-5 h-5 text-green-500" />
-                      Detailed Analytics
+                      <LineChart className="w-5 h-5" />
+                      Weekly Sales Trend
                     </CardTitle>
                     <CardDescription>
-                      Payment and channel performance metrics
+                      8-week performance overview
                     </CardDescription>
                   </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div>
-                        <h3 className="text-lg font-semibold mb-4">
-                          Payment Methods
-                        </h3>
-                        <div className="space-y-4">
-                          {paymentSplitData.map((method, idx) => (
-                            <div
-                              key={idx}
-                              className="flex items-center justify-between"
-                            >
-                              <div className="flex items-center gap-3">
-                                <div
-                                  className="w-3 h-3 rounded-full"
-                                  style={{ backgroundColor: method.color }}
-                                />
-                                <span className="font-medium">
-                                  {method.name}
-                                </span>
-                              </div>
-                              <div className="text-right">
-                                <p className="font-bold">
-                                  {method.value.toFixed(1)}%
-                                </p>
-                                <p className="text-sm text-muted-foreground">
-                                  {method.count} orders •{" "}
-                                  {formatCurrency(method.amount)}
-                                </p>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                      <div>
-                        <h3 className="text-lg font-semibold mb-4">Channels</h3>
-                        <div className="space-y-4">
-                          {channelSplitData.map((channel, idx) => (
-                            <div
-                              key={idx}
-                              className="flex items-center justify-between"
-                            >
-                              <div className="flex items-center gap-3">
-                                <div
-                                  className="w-3 h-3 rounded-full"
-                                  style={{ backgroundColor: channel.color }}
-                                />
-                                <span className="font-medium">
-                                  {channel.name}
-                                </span>
-                              </div>
-                              <div className="text-right">
-                                <p className="font-bold">
-                                  {channel.value.toFixed(1)}%
-                                </p>
-                                <p className="text-sm text-muted-foreground">
-                                  {channel.count} orders •{" "}
-                                  {formatCurrency(channel.amount)}
-                                </p>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
+                  <CardContent className="pt-6">
+                    <BarChart
+                      className="h-72"
+                      data={weeklyTrendData}
+                      index="Week"
+                      categories={["Revenue", "Orders", "Avg Order"]}
+                      colors={["emerald", "blue", "violet"]}
+                      valueFormatter={formatCurrency}
+                      showLegend={true}
+                      showGridLines={true}
+                      showAnimation={true}
+                    />
+                  </CardContent>
+                </Card>
+              </motion.div>
+
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 0.4 }}
+              >
+                <Card className="rounded-2xl border-border/40 shadow-lg overflow-hidden">
+                  <CardHeader className="bg-gradient-to-r from-amber-500/10 to-orange-500/10">
+                    <CardTitle className="flex items-center gap-2">
+                      <Package className="w-5 h-5" />
+                      Top Selling Products
+                    </CardTitle>
+                    <CardDescription>
+                      Best performers by quantity and revenue
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="pt-6">
+                    <BarChart
+                      className="h-72"
+                      data={topProductsData}
+                      index="name"
+                      categories={["sales", "revenue"]}
+                      colors={["indigo", "rose"]}
+                      valueFormatter={(value: number) => value.toString()}
+                      showLegend={true}
+                      showGridLines={true}
+                      showAnimation={true}
+                      layout="vertical"
+                    />
                   </CardContent>
                 </Card>
               </motion.div>

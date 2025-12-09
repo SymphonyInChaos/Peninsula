@@ -25,7 +25,7 @@ model Product {
   minStockLevel Int?        @default(5)    // ADD THIS
   reorderPoint  Int?        @default(10)   // ADD THIS
   OrderItem     OrderItem[]
-
+movements StockMovement[]
   @@map("products")
 }
 
@@ -57,7 +57,8 @@ model Order {
   cashierId        String?     // ADD THIS
   items            OrderItem[]
   customer         Customer?   @relation(fields: [customerId], references: [id], onDelete: Cascade)
-
+   payments Payment[]
+refunds  Refund[]
   @@map("orders")
 }
 
@@ -97,6 +98,7 @@ model User {
   name      String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  sessions Session[]
 
   @@map("users")
 }
@@ -105,4 +107,64 @@ enum UserRole {
   ADMIN
   MANAGER
   STAFF
+}
+model StockMovement {
+  id         String   @id @default(cuid())
+  productId  String
+  type       String   // "sale" | "restock" | "adjustment" | "refund"
+  quantity   Int
+  oldStock   Int
+  newStock   Int
+  reason     String?  // optional note like "Damaged goods" or "Manual correction"
+  createdAt  DateTime @default(now())
+
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@map("stock_movements")
+}
+model Payment {
+  id        String   @id @default(cuid())
+  orderId   String
+  method    String   // "cash" | "upi" | "card" | "wallet"
+  amount    Float
+  reference String?
+  createdAt DateTime @default(now())
+
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@map("payments")
+}
+model Refund {
+  id        String   @id @default(cuid())
+  orderId   String
+  amount    Float
+  reason    String?
+  createdAt DateTime @default(now())
+
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("refunds")
+}
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  startTime DateTime @default(now())
+  endTime   DateTime?
+  totalSales Float?
+
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@map("sessions")
+}
+model Expense {
+  id        String   @id @default(cuid())
+  title     String
+  amount    Float
+  date      DateTime @default(now())
+  category  String?
+  notes     String?
+
+  @@map("expenses")
 }

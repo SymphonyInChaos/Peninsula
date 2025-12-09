@@ -1,4 +1,4 @@
-// routes/reports.js
+// routes/report.js
 import { Router } from "express";
 import { ReportService } from "../services/reportService.js";
 import { authenticate, authorize } from "../middleware/auth.js";
@@ -262,53 +262,84 @@ router.get(
   }
 );
 
-// DASHBOARD SUMMARY
+// DEBUG ENDPOINT - Add this for testing
+router.get("/debug", authenticate, async (req, res, next) => {
+  try {
+    const today = new Date().toISOString().split("T")[0];
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    // Test each report individually
+    const tests = {
+      dailySales: await ReportService.getDailySalesReport(today),
+      paymentAnalytics: await ReportService.getPaymentAnalyticsReport(
+        yesterday.toISOString().split("T")[0],
+        today
+      ),
+      lowStock: await ReportService.getLowStockReport(10),
+      inventory: await ReportService.getInventoryValuationReport(),
+      customerHistory: await ReportService.getCustomerPurchaseHistory(null, 5),
+    };
+
+    res.json({
+      success: true,
+      message: "Debug information",
+      data: {
+        today,
+        testDates: {
+          yesterday: yesterday.toISOString().split("T")[0],
+          today,
+        },
+        reports: tests,
+        user: req.user,
+        timestamp: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// DASHBOARD SUMMARY - FIXED VERSION
 router.get("/dashboard", authenticate, async (req, res, next) => {
   try {
     const userRole = req.user?.roles?.[0] || "staff";
 
-    // Get reports based on role
-    const reportPromises = [];
+    // Get current date for relevant reports
+    const today = new Date().toISOString().split("T")[0];
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-    // Basic reports for all roles
-    reportPromises.push(
-      ReportService.getDailySalesReport(),
-      ReportService.getLowStockReport(10)
-    );
+    // Initialize report objects
+    let reports = {
+      dailySales: null,
+      lowStock: null,
+      inventory: null,
+      payment: null,
+      trend: null,
+    };
 
-    // Additional reports for managers and admins
-    if (["admin", "manager"].includes(userRole)) {
-      reportPromises.push(
-        ReportService.getInventoryValuationReport(),
-        ReportService.getPaymentAnalyticsReport(null, null, 7), // Last 7 days
-        ReportService.getSalesTrendReport("weekly", 4)
-      );
+    try {
+      // Basic reports for all roles - use today's date
+      reports.dailySales = await ReportService.getDailySalesReport(today);
+      reports.lowStock = await ReportService.getLowStockReport(10);
+
+      // Additional reports for managers and admins
+      if (["admin", "manager"].includes(userRole)) {
+        reports.inventory = await ReportService.getInventoryValuationReport();
+        reports.payment = await ReportService.getPaymentAnalyticsReport(
+          sevenDaysAgo.toISOString().split("T")[0],
+          today
+        );
+        reports.trend = await ReportService.getSalesTrendReport("weekly", 4);
+      }
+    } catch (error) {
+      console.log("Some reports failed, using fallback:", error.message);
+      // Continue with whatever reports succeeded
     }
 
-    const reports = await Promise.allSettled(reportPromises);
-
-    // Handle failed promises
-    const [
-      dailySalesResult,
-      lowStockResult,
-      inventoryResult,
-      paymentResult,
-      trendResult,
-    ] = reports.map((result) =>
-      result.status === "fulfilled" ? result.value : null
-    );
-
-    // Build dashboard based on role
-    const dashboard = buildDashboard(
-      {
-        dailySales: dailySalesResult,
-        lowStock: lowStockResult,
-        inventory: inventoryResult,
-        payment: paymentResult,
-        trend: trendResult,
-      },
-      userRole
-    );
+    // Build dashboard based on role with fallback for missing reports
+    const dashboard = buildDashboard(reports, userRole);
 
     res.json({
       success: true,
@@ -318,6 +349,13 @@ router.get("/dashboard", authenticate, async (req, res, next) => {
         generatedAt: new Date().toISOString(),
         role: userRole,
         user: req.user.id,
+        reportStatus: {
+          dailySales: !!reports.dailySales,
+          lowStock: !!reports.lowStock,
+          inventory: !!reports.inventory,
+          payment: !!reports.payment,
+          trend: !!reports.trend,
+        },
       },
     });
   } catch (error) {
@@ -472,6 +510,8 @@ router.get(
 
 // Filter report data based on user role
 function filterReportByRole(report, roles) {
+  if (!report) return getEmptyReport();
+
   if (roles.includes("admin")) {
     return report; // Admin sees everything
   }
@@ -506,9 +546,9 @@ function filterReportByRole(report, roles) {
   // Only show basic counts and percentages
   if (filtered.summary) {
     filtered.summary = {
-      totalOrders: filtered.summary.totalOrders,
-      orderCount: filtered.summary.orderCount,
-      totalItems: filtered.summary.totalItems,
+      totalOrders: filtered.summary.totalOrders || 0,
+      completedOrders: filtered.summary.completedOrders || 0,
+      totalItems: filtered.summary.totalItems || 0,
     };
   }
 
@@ -523,6 +563,8 @@ function filterReportByRole(report, roles) {
 
 // Filter financial data
 function filterFinancialData(report) {
+  if (!report) return getEmptyReport();
+
   const filtered = JSON.parse(JSON.stringify(report));
 
   // Remove cost and profit data
@@ -548,6 +590,8 @@ function filterFinancialData(report) {
 
 // Filter customer data
 function filterCustomerData(report) {
+  if (!report) return { generatedAt: new Date().toISOString(), customers: [] };
+
   const filtered = JSON.parse(JSON.stringify(report));
 
   if (filtered.customer) {
@@ -561,8 +605,9 @@ function filterCustomerData(report) {
       customerName: filtered.customer.customerName,
       summary: filtered.customer.summary,
       behavior: {
-        favoriteProducts: filtered.customer.behavior.favoriteProducts,
-        favoriteCategories: filtered.customer.behavior.favoriteCategories,
+        favoriteProducts: filtered.customer.behavior?.favoriteProducts || [],
+        favoriteCategories:
+          filtered.customer.behavior?.favoriteCategories || [],
       },
     };
   }
@@ -580,6 +625,8 @@ function filterCustomerData(report) {
 
 // Filter cost data
 function filterCostData(report) {
+  if (!report) return getEmptyReport();
+
   const filtered = JSON.parse(JSON.stringify(report));
 
   // Remove cost-related fields
@@ -607,6 +654,15 @@ function filterCostData(report) {
   return filtered;
 }
 
+// Get empty report structure
+function getEmptyReport() {
+  return {
+    generatedAt: new Date().toISOString(),
+    summary: {},
+    metadata: { isEmpty: true },
+  };
+}
+
 // Build dashboard based on role
 function buildDashboard(reports, role) {
   const { dailySales, lowStock, inventory, payment, trend } = reports;
@@ -631,19 +687,19 @@ function buildDashboard(reports, role) {
   };
 
   // Add payment insights for managers and admins
-  if (["admin", "manager"].includes(role) && payment) {
+  if (["admin", "manager"].includes(role)) {
     dashboard.overview.payment = {
-      topMethod: payment.insights?.topPaymentMethod || "cash",
-      cashPercentage: payment.paymentSummary?.cash?.percentage || 0,
-      upiPercentage: payment.paymentSummary?.upi?.percentage || 0,
-      cardPercentage: payment.paymentSummary?.card?.percentage || 0,
-      digitalAdoption: payment.insights?.digitalAdoption || 0,
+      topMethod: payment?.insights?.topPaymentMethod || "cash",
+      cashPercentage: payment?.paymentSummary?.cash?.percentage || 0,
+      upiPercentage: payment?.paymentSummary?.upi?.percentage || 0,
+      cardPercentage: payment?.paymentSummary?.card?.percentage || 0,
+      digitalAdoption: payment?.insights?.digitalAdoption || 0,
     };
 
     dashboard.overview.channels = {
-      onlinePercentage: payment.channelSummary?.online?.percentage || 0,
-      offlinePercentage: payment.channelSummary?.offline?.percentage || 0,
-      dominantChannel: payment.insights?.topChannel || "offline",
+      onlinePercentage: payment?.channelSummary?.online?.percentage || 0,
+      offlinePercentage: payment?.channelSummary?.offline?.percentage || 0,
+      dominantChannel: payment?.insights?.topChannel || "offline",
     };
   }
 
@@ -654,6 +710,15 @@ function buildDashboard(reports, role) {
       channelSplit: dailySales?.channelInsights?.split || [],
       hourlyBreakdown: dailySales?.hourlyBreakdown || [],
       salesTrend: trend?.trend || [],
+      topProducts: dailySales?.productInsights?.topProducts || [],
+    };
+  } else {
+    // Basic analytics for staff
+    dashboard.analytics = {
+      paymentSplit: [],
+      channelSplit: [],
+      hourlyBreakdown: [],
+      salesTrend: [],
       topProducts: dailySales?.productInsights?.topProducts || [],
     };
   }
@@ -722,16 +787,8 @@ function getEmptyDashboard() {
       },
     },
     analytics: {
-      paymentSplit: ReportService.VALID_PAYMENT_METHODS.map((method) => ({
-        method,
-        count: 0,
-        percentage: 0,
-      })),
-      channelSplit: ReportService.VALID_CHANNELS.map((channel) => ({
-        channel,
-        count: 0,
-        percentage: 0,
-      })),
+      paymentSplit: [],
+      channelSplit: [],
       hourlyBreakdown: Array.from({ length: 24 }, (_, i) => ({
         hour: `${i.toString().padStart(2, "0")}:00`,
         sales: 0,
@@ -758,7 +815,7 @@ function getEmptyDashboard() {
 function generateStockAlerts(lowStockReport) {
   const alerts = [];
 
-  if (!lowStockReport) return alerts;
+  if (!lowStockReport || !lowStockReport.products) return alerts;
 
   const criticalItems =
     lowStockReport.products?.filter((p) => p.urgency === "critical") || [];
@@ -790,7 +847,7 @@ function generateStockAlerts(lowStockReport) {
 function generatePerformanceAlerts(dailySales) {
   const alerts = [];
 
-  if (!dailySales) return alerts;
+  if (!dailySales || !dailySales.summary) return alerts;
 
   const netRevenue = dailySales.summary?.netRevenue || 0;
   const refundRate =
@@ -916,7 +973,7 @@ function filterReportForExport(report, roles) {
   }
 
   // For non-admin roles, remove sensitive data
-  const filtered = JSON.parse(JSON.stringify(report));
+  const filtered = JSON.parse(JSON.stringify(report || {}));
 
   // Remove cost and profit data
   const removeSensitiveFields = (obj) => {
@@ -961,6 +1018,20 @@ function convertToCSV(data, type) {
   return csv;
 }
 
+function convertDailySalesToCSV(data) {
+  if (!data || !data.summary) return "No data";
+
+  const headers = ["Metric", "Value"];
+  const rows = [
+    ["Total Orders", data.summary.totalOrders || 0],
+    ["Completed Orders", data.summary.completedOrders || 0],
+    ["Net Revenue", data.summary.netRevenue || 0],
+    ["Average Order Value", data.summary.avgOrderValue || 0],
+  ];
+
+  return [headers, ...rows].map((row) => row.join(",")).join("\n");
+}
+
 async function convertToExcel(data, type) {
   // Implementation using xlsx library
   // This would create an Excel file buffer
@@ -973,5 +1044,5 @@ async function convertToPDF(data, type) {
   return Buffer.from("");
 }
 
-// Export the router
+// EXPORT DEFAULT AT THE END
 export default router;

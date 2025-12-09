@@ -38,6 +38,7 @@ const apiCall = async (url: string, options: RequestInit = {}) => {
 };
 
 export const api = {
+  // AUTHENTICATION
   auth: {
     checkSetup: async () => {
       return apiCall(`${API_BASE_URL}/api/auth/check-setup`);
@@ -85,6 +86,7 @@ export const api = {
     },
   },
 
+  // USERS
   users: {
     create: async (userData: {
       email: string;
@@ -99,6 +101,7 @@ export const api = {
     },
   },
 
+  // CUSTOMERS
   customers: {
     getAll: async () => {
       const data = await apiCall(`${API_BASE_URL}/api/customers`);
@@ -136,6 +139,7 @@ export const api = {
     },
   },
 
+  // PRODUCTS
   products: {
     getAll: async () => {
       const data = await apiCall(`${API_BASE_URL}/api/products`);
@@ -183,6 +187,7 @@ export const api = {
     },
   },
 
+  // ORDERS
   orders: {
     getAll: async () => {
       const data = await apiCall(`${API_BASE_URL}/api/orders`);
@@ -230,7 +235,7 @@ export const api = {
       });
     },
 
-    // NEW: Get payment method statistics
+    // Get payment method statistics
     getPaymentMethodStats: async (startDate?: string, endDate?: string) => {
       let url = `${API_BASE_URL}/api/orders/analytics/payment-methods`;
       const params = new URLSearchParams();
@@ -246,7 +251,7 @@ export const api = {
       return data.data || data;
     },
 
-    // NEW: Get channel analytics
+    // Get channel analytics
     getChannelAnalytics: async (startDate?: string, endDate?: string) => {
       let url = `${API_BASE_URL}/api/orders/analytics/channels`;
       const params = new URLSearchParams();
@@ -263,6 +268,7 @@ export const api = {
     },
   },
 
+  // REPORTS
   reports: {
     getDailySales: async (date?: string) => {
       const url = date
@@ -358,7 +364,62 @@ export const api = {
     },
   },
 
-  // NEW: Analytics namespace for easy access
+  // STOCK MOVEMENTS - UPDATED with correct endpoint names
+  stockMovements: {
+    getAll: async (type?: string) => {
+      const url =
+        type && type !== "all"
+          ? `${API_BASE_URL}/api/stock-movements?type=${type}`
+          : `${API_BASE_URL}/api/stock-movements`;
+
+      const data = await apiCall(url);
+      return data;
+    },
+
+    getById: async (id: string) => {
+      const data = await apiCall(`${API_BASE_URL}/api/stock-movements/${id}`);
+      return data;
+    },
+
+    create: async (data: {
+      productId: string;
+      type: "sale" | "restock" | "adjustment" | "refund";
+      quantity: number;
+      reason?: string;
+    }) => {
+      const result = await apiCall(`${API_BASE_URL}/api/stock-movements`, {
+        method: "POST",
+        body: JSON.stringify(data),
+      });
+      return result;
+    },
+
+    getReport: async () => {
+      const data = await apiCall(
+        `${API_BASE_URL}/api/stock-movements/report/summary`
+      );
+      return data;
+    },
+
+    seedSampleData: async () => {
+      const result = await apiCall(
+        `${API_BASE_URL}/api/stock-movements/seed-stock-data`, // CORRECT ENDPOINT NAME
+        {
+          method: "POST",
+        }
+      );
+      return result;
+    },
+
+    getProductHistory: async (productId: string) => {
+      const data = await apiCall(
+        `${API_BASE_URL}/api/stock-movements/product/${productId}`
+      );
+      return data;
+    },
+  },
+
+  // ANALYTICS
   analytics: {
     getPaymentMethods: async (startDate?: string, endDate?: string) => {
       let url = `${API_BASE_URL}/api/orders/analytics/payment-methods`;
@@ -426,7 +487,7 @@ export const api = {
     },
   },
 
-  // NEW: Payment utilities
+  // PAYMENT UTILITIES
   payments: {
     getMethods: () => {
       return [
@@ -531,7 +592,7 @@ export const authDebug = {
     }
   },
 
-  // NEW: Test payment analytics
+  // Test payment analytics
   testPaymentAnalytics: async () => {
     try {
       console.log("🧪 Testing Payment Analytics...");
@@ -566,6 +627,32 @@ export const authDebug = {
       console.log("✅ Payment analytics test completed successfully");
     } catch (error) {
       console.log("❌ Payment analytics test failed:", error);
+    }
+  },
+
+  // Test stock movements
+  testStockMovements: async () => {
+    try {
+      console.log("🧪 Testing Stock Movements API...");
+
+      // Test getting all movements
+      const movements = await api.stockMovements.getAll();
+      console.log("📦 Stock Movements:", {
+        count: movements?.length || 0,
+        firstMovement: movements?.[0]?.id || "No movements",
+      });
+
+      // Test getting report
+      const report = await api.stockMovements.getReport();
+      console.log("📊 Stock Report:", {
+        totalMovements: report?.totalMovements || 0,
+        totalSales: report?.totalSales || 0,
+        totalRestocks: report?.totalRestocks || 0,
+      });
+
+      console.log("✅ Stock movements test completed successfully");
+    } catch (error) {
+      console.log("❌ Stock movements test failed:", error);
     }
   },
 };
@@ -659,6 +746,33 @@ export interface DashboardData {
   };
 }
 
+// Stock movement types
+export type StockMovementType = "sale" | "restock" | "adjustment" | "refund";
+
+export interface StockMovement {
+  id: string;
+  productId: string;
+  productName?: string;
+  type: StockMovementType;
+  quantity: number;
+  oldStock: number;
+  newStock: number;
+  reason?: string;
+  createdAt: string;
+}
+
+export interface StockReport {
+  totalMovements: number;
+  totalSales: number;
+  totalRestocks: number;
+  totalAdjustments: number;
+  totalRefunds: number;
+  totalQuantitySold: number;
+  totalQuantityRestocked: number;
+  totalQuantityAdjusted: number;
+  totalQuantityRefunded: number;
+}
+
 // Utility function to format currency
 export const formatCurrency = (amount: number): string => {
   return new Intl.NumberFormat("en-IN", {
@@ -691,4 +805,15 @@ export const getChannelColor = (channel: ChannelType): string => {
     offline: "#22c55e", // Green
   };
   return colors[channel] || "#6b7280";
+};
+
+// Utility function to get stock movement color
+export const getStockMovementColor = (type: StockMovementType): string => {
+  const colors: Record<StockMovementType, string> = {
+    sale: "#ef4444", // Red
+    restock: "#22c55e", // Green
+    adjustment: "#f59e0b", // Yellow
+    refund: "#3b82f6", // Blue
+  };
+  return colors[type] || "#6b7280";
 };

@@ -10,13 +10,16 @@ import {
   Menu,
   LogOut,
   Sparkles,
+  BoxIcon,
+  Box,
 } from "lucide-react";
 import ProductsView from "@/components/dashboard/ProductsView";
 import OrdersView from "@/components/dashboard/OrdersView";
 import CustomersView from "@/components/dashboard/CustomersView";
 import ReportView from "@/components/dashboard/ReportView";
+import StockView from "@/components/dashboard/StockView";
 
-type ActiveView = "products" | "orders" | "customers" | "reports";
+type ActiveView = "products" | "orders" | "customers" | "reports" | "stocks";
 
 const Dashboard = () => {
   const [activeView, setActiveView] = useState<ActiveView>("products");
@@ -28,6 +31,7 @@ const Dashboard = () => {
     { id: "orders" as ActiveView, label: "Orders", icon: ShoppingCart },
     { id: "customers" as ActiveView, label: "Customers", icon: Users },
     { id: "reports" as ActiveView, label: "Reports", icon: TrendingUp },
+    { id: "stocks" as ActiveView, label: "Stocks", icon: Box },
   ];
 
   const renderView = () => {
@@ -40,6 +44,8 @@ const Dashboard = () => {
         return <CustomersView />;
       case "reports":
         return <ReportView />;
+      case "stocks":
+        return <StockView />;
     }
   };
 
