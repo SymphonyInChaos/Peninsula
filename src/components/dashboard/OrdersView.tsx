@@ -56,16 +56,17 @@ import OrderForm from "@/components/forms/OrderForm";
 import { cn } from "@/lib/utils";
 import { cva } from "class-variance-authority";
 
+// Define proper types for the API response
 interface BackendOrder {
   id: string;
-  customerId: string;
+  customerId: string | null;
   total: number;
   createdAt: string;
   updatedAt: string;
   paymentMethod: string;
   status: string;
-  paymentReference: string;
-  cashierId: string;
+  paymentReference: string | null;
+  cashierId: string | null;
   customer?: {
     id: string;
     name: string;
@@ -87,6 +88,16 @@ interface BackendOrder {
       category?: string;
     };
   }>;
+}
+
+interface PaginatedResponse {
+  orders: BackendOrder[];
+  pagination: {
+    total: number;
+    page: number;
+    limit: number;
+    pages: number;
+  };
 }
 
 interface TransformedOrder {
@@ -130,25 +141,27 @@ const transformOrder = (
   index: number
 ): TransformedOrder => {
   const mapStatus = (backendStatus: string): TransformedOrder["status"] => {
-    switch (backendStatus.toLowerCase()) {
-      case "completed":
-      case "delivered":
-        return "completed";
-      case "processing":
-      case "confirmed":
-      case "shipped":
-        return "processing";
-      case "pending":
-      case "new":
-        return "pending";
-      case "cancelled":
-      case "canceled":
-        return "cancelled";
-      case "refunded":
-        return "refunded";
-      default:
-        return "pending";
+    const status = backendStatus.toLowerCase();
+    if (status.includes("complete") || status.includes("delivered")) {
+      return "completed";
     }
+    if (
+      status.includes("process") ||
+      status.includes("confirm") ||
+      status.includes("ship")
+    ) {
+      return "processing";
+    }
+    if (status.includes("pending") || status.includes("new")) {
+      return "pending";
+    }
+    if (status.includes("cancel")) {
+      return "cancelled";
+    }
+    if (status.includes("refund")) {
+      return "refunded";
+    }
+    return "pending";
   };
 
   // Extract item details
@@ -184,7 +197,7 @@ const transformOrder = (
     id: order.id,
     customer:
       order.customer?.name ||
-      (order.customerId ? `Customer ₹{order.customerId}` : "Walk-in Customer"),
+      (order.customerId ? `Customer ${order.customerId}` : "Walk-in Customer"),
     date,
     status: mapStatus(order.status),
     total: order.total,
@@ -270,30 +283,38 @@ const StatusCard = ({
 const OrdersView = () => {
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
-  const [editingOrder, setEditingOrder] = useState<any>(null);
-  const [deletingOrder, setDeletingOrder] = useState<any>(null);
+  const [editingOrder, setEditingOrder] = useState<BackendOrder | null>(null);
+  const [deletingOrder, setDeletingOrder] = useState<BackendOrder | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [paymentFilter, setPaymentFilter] = useState<string>("all");
 
+  // Fix the useQuery hook with proper types
   const {
     data: ordersData,
     isLoading,
     error,
-  } = useQuery({
+  } = useQuery<BackendOrder[]>({
     queryKey: ["orders"],
-    queryFn: api.orders.getAll,
-    select: (data) => {
-      // Handle different response structures
-      if (Array.isArray(data)) {
-        return data;
+    queryFn: async () => {
+      try {
+        const response = await api.orders.getAll();
+        // Handle different response structures
+        if (Array.isArray(response)) {
+          return response;
+        }
+        // Backend returns { orders: [], pagination: {} }
+        return (response as PaginatedResponse)?.orders || [];
+      } catch (err) {
+        console.error("Error fetching orders:", err);
+        throw err;
       }
-      // Backend returns { orders: [], pagination: {} }
-      return data?.orders || data?.data || [];
     },
+    refetchOnWindowFocus: false,
+    retry: 2,
   });
 
   const deleteOrderMutation = useMutation({
-    mutationFn: api.orders.delete,
+    mutationFn: (id: string) => api.orders.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["orders"] });
       queryClient.invalidateQueries({ queryKey: ["customers"] });
@@ -314,7 +335,7 @@ const OrdersView = () => {
       orderId: string;
       status: string;
     }) => {
-      return api.orders.update(orderId, { status });
+      return api.orders.updateStatus(orderId, status);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["orders"] });
@@ -358,9 +379,8 @@ const OrdersView = () => {
     );
   }
 
-  const transformedOrders = Array.isArray(ordersData)
-    ? ordersData.map(transformOrder)
-    : [];
+  const orders = ordersData || [];
+  const transformedOrders = orders.map(transformOrder);
 
   const filteredOrders = transformedOrders.filter((order) => {
     const statusMatch = statusFilter === "all" || order.status === statusFilter;
@@ -677,10 +697,10 @@ const OrdersView = () => {
                             variant="ghost"
                             size="sm"
                             onClick={() => {
-                              const rawOrder = Array.isArray(ordersData)
-                                ? ordersData.find((o: any) => o.id === order.id)
-                                : null;
-                              setEditingOrder(rawOrder);
+                              const rawOrder = orders.find(
+                                (o) => o.id === order.id
+                              );
+                              setEditingOrder(rawOrder || null);
                               setShowForm(true);
                             }}
                           >
@@ -693,10 +713,10 @@ const OrdersView = () => {
                             size="sm"
                             className="text-destructive hover:text-destructive"
                             onClick={() => {
-                              const rawOrder = Array.isArray(ordersData)
-                                ? ordersData.find((o: any) => o.id === order.id)
-                                : null;
-                              setDeletingOrder(rawOrder);
+                              const rawOrder = orders.find(
+                                (o) => o.id === order.id
+                              );
+                              setDeletingOrder(rawOrder || null);
                             }}
                           >
                             <Trash2 className="w-4 h-4" />

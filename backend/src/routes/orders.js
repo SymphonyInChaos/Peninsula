@@ -5,31 +5,9 @@ import { generateNextId } from "../utils/idGenerator.js";
 
 const router = Router();
 
-// Order Status Constants (matching db.js)
-const ORDER_STATUS_FLOW = {
-  [ORDER_STATUSES.PENDING]: [
-    ORDER_STATUSES.CONFIRMED,
-    ORDER_STATUSES.CANCELLED,
-  ],
-  [ORDER_STATUSES.CONFIRMED]: [
-    ORDER_STATUSES.PROCESSING,
-    ORDER_STATUSES.CANCELLED,
-  ],
-  [ORDER_STATUSES.PROCESSING]: [
-    ORDER_STATUSES.COMPLETED,
-    ORDER_STATUSES.CANCELLED,
-  ],
-  [ORDER_STATUSES.COMPLETED]: [ORDER_STATUSES.REFUNDED],
-  [ORDER_STATUSES.CANCELLED]: [],
-  [ORDER_STATUSES.REFUNDED]: [],
-};
-
-// Validate status transition
+// SIMPLIFIED: Allow any status transition
 const validateStatusTransition = (currentStatus, newStatus) => {
-  if (!currentStatus) return true; // New order, can start with any valid status
-
-  const allowedTransitions = ORDER_STATUS_FLOW[currentStatus] || [];
-  return allowedTransitions.includes(newStatus);
+  return true; // Allow all transitions
 };
 
 // Order includes
@@ -389,7 +367,7 @@ router.post("/", async (req, res) => {
   }
 });
 
-// PATCH update order status
+// SIMPLIFIED: PATCH update order status (ALLOW ANY TRANSITION)
 router.patch("/:id/status", async (req, res) => {
   try {
     const { status, reason } = req.body;
@@ -420,12 +398,8 @@ router.patch("/:id/status", async (req, res) => {
       return res.status(404).json({ message: "Order not found" });
     }
 
-    // Validate status transition
-    if (!validateStatusTransition(existingOrder.status, status)) {
-      return res.status(400).json({
-        message: `Invalid status transition from ${existingOrder.status} to ${status}`,
-      });
-    }
+    // ALLOW ANY STATUS TRANSITION
+    // No validation - allow any status change
 
     const order = await prisma.$transaction(async (tx) => {
       // Handle stock adjustments based on status changes
@@ -532,7 +506,7 @@ router.patch("/:id/status", async (req, res) => {
   }
 });
 
-// PUT update order
+// SIMPLIFIED: PUT update order (ALLOW ANY TRANSITION)
 router.put("/:id", async (req, res) => {
   try {
     const {
@@ -601,12 +575,9 @@ router.put("/:id", async (req, res) => {
 
       let updateData = {};
 
-      // Handle status update with validation
+      // Handle status update - NO VALIDATION, ALLOW ANY
       if (status !== undefined) {
-        if (!validateStatusTransition(existing.status, status)) {
-          throw new Error("INVALID_STATUS_TRANSITION");
-        }
-
+        // ALLOW ANY STATUS TRANSITION
         // Handle stock adjustments for status changes
         if (
           (existing.status === ORDER_STATUSES.CANCELLED ||
@@ -850,11 +821,7 @@ router.put("/:id", async (req, res) => {
         .json({ message: "Insufficient stock for updated quantities" });
     }
 
-    if (error.message === "INVALID_STATUS_TRANSITION") {
-      return res.status(400).json({
-        message: "Invalid status transition",
-      });
-    }
+    // REMOVED INVALID_STATUS_TRANSITION error - allow any transition
 
     if (error.message === "CASHIER_NOT_FOUND") {
       return res.status(400).json({ message: "Cashier not found" });

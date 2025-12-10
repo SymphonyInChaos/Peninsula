@@ -14,7 +14,7 @@ const generateRandomId = () => {
 // Helper function to get auth token
 const getAuthToken = () => localStorage.getItem("token");
 
-// Updated apiCall function to handle empty responses
+// Updated apiCall function with better error handling
 const apiCall = async (url: string, options: RequestInit = {}) => {
   const token = getAuthToken();
   const headers = {
@@ -31,18 +31,6 @@ const apiCall = async (url: string, options: RequestInit = {}) => {
   try {
     const response = await fetch(url, config);
 
-    if (!response.ok) {
-      // Try to get error message from response
-      let errorMessage = `HTTP error! status: ${response.status}`;
-      try {
-        const errorData = await response.json();
-        errorMessage = errorData.message || errorMessage;
-      } catch {
-        // If response is not JSON, use default message
-      }
-      throw new Error(errorMessage);
-    }
-
     // Handle 204 No Content and other empty responses
     if (response.status === 204 || response.status === 205) {
       return null;
@@ -50,12 +38,30 @@ const apiCall = async (url: string, options: RequestInit = {}) => {
 
     // Check if response has content
     const contentType = response.headers.get("content-type");
-    if (!contentType || !contentType.includes("application/json")) {
-      return null;
+
+    // Try to parse JSON response, even for error statuses
+    if (contentType && contentType.includes("application/json")) {
+      const data = await response.json();
+
+      if (!response.ok) {
+        // Extract error message from JSON response
+        const errorMessage =
+          data.message ||
+          data.error ||
+          `HTTP error! status: ${response.status}`;
+        throw new Error(errorMessage);
+      }
+
+      return data;
     }
 
-    // Parse JSON response
-    return await response.json();
+    // For non-JSON responses, check status
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    // For empty non-JSON responses
+    return null;
   } catch (error: any) {
     console.error(`API Call failed for ${url}:`, error);
     throw error;
@@ -81,10 +87,17 @@ export const api = {
     },
 
     login: async (email: string, password: string) => {
-      return apiCall(`${API_BASE_URL}/api/auth/login`, {
+      const data = await apiCall(`${API_BASE_URL}/api/auth/login`, {
         method: "POST",
         body: JSON.stringify({ email, password }),
       });
+
+      // Store token if provided
+      if (data?.token) {
+        localStorage.setItem("token", data.token);
+      }
+
+      return data;
     },
 
     register: async (userData: {
@@ -108,6 +121,10 @@ export const api = {
         method: "PUT",
         body: JSON.stringify({ currentPassword, newPassword }),
       });
+    },
+
+    logout: () => {
+      localStorage.removeItem("token");
     },
   },
 
@@ -212,11 +229,39 @@ export const api = {
     },
   },
 
-  // ORDERS
+  // ORDERS - UPDATED TO REMOVE STATUS VALIDATION
   orders: {
-    getAll: async () => {
-      const data = await apiCall(`${API_BASE_URL}/api/orders`);
-      // Backend returns { orders: [], pagination: {} } structure
+    getAll: async (params?: {
+      status?: string;
+      customerId?: string;
+      startDate?: string;
+      endDate?: string;
+      limit?: number;
+      page?: number;
+      search?: string;
+      paymentMethod?: string;
+    }) => {
+      let url = `${API_BASE_URL}/api/orders`;
+      const queryParams = new URLSearchParams();
+
+      if (params) {
+        if (params.status) queryParams.append("status", params.status);
+        if (params.customerId)
+          queryParams.append("customerId", params.customerId);
+        if (params.startDate) queryParams.append("startDate", params.startDate);
+        if (params.endDate) queryParams.append("endDate", params.endDate);
+        if (params.limit) queryParams.append("limit", params.limit.toString());
+        if (params.page) queryParams.append("page", params.page.toString());
+        if (params.search) queryParams.append("search", params.search);
+        if (params.paymentMethod)
+          queryParams.append("paymentMethod", params.paymentMethod);
+      }
+
+      if (queryParams.toString()) {
+        url += `?${queryParams.toString()}`;
+      }
+
+      const data = await apiCall(url);
       return data?.orders || data?.data || data || [];
     },
 
@@ -250,6 +295,7 @@ export const api = {
       return result?.data || result;
     },
 
+    // UPDATED: Remove status validation, allow any status
     update: async (
       id: string,
       data: {
@@ -275,6 +321,7 @@ export const api = {
       });
     },
 
+    // UPDATED: Allow any status transition
     updateStatus: async (id: string, status: string, reason?: string) => {
       const result = await apiCall(`${API_BASE_URL}/api/orders/${id}/status`, {
         method: "PATCH",
@@ -283,8 +330,28 @@ export const api = {
       return result?.data || result;
     },
 
-    getByStatus: async (status: string) => {
-      const data = await apiCall(`${API_BASE_URL}/api/orders/status/${status}`);
+    getByStatus: async (
+      status: string,
+      params?: {
+        startDate?: string;
+        endDate?: string;
+        limit?: number;
+        page?: number;
+      }
+    ) => {
+      let url = `${API_BASE_URL}/api/orders/status/${status}`;
+      const queryParams = new URLSearchParams();
+
+      if (params?.startDate) queryParams.append("startDate", params.startDate);
+      if (params?.endDate) queryParams.append("endDate", params.endDate);
+      if (params?.limit) queryParams.append("limit", params.limit.toString());
+      if (params?.page) queryParams.append("page", params.page.toString());
+
+      if (queryParams.toString()) {
+        url += `?${queryParams.toString()}`;
+      }
+
+      const data = await apiCall(url);
       return data?.orders || data?.data || data || [];
     },
 
@@ -436,12 +503,12 @@ export const api = {
           : `${API_BASE_URL}/api/stock-movements`;
 
       const data = await apiCall(url);
-      return data || [];
+      return data?.data || data || [];
     },
 
     getById: async (id: string) => {
       const data = await apiCall(`${API_BASE_URL}/api/stock-movements/${id}`);
-      return data;
+      return data?.data || data;
     },
 
     create: async (data: {
@@ -454,14 +521,14 @@ export const api = {
         method: "POST",
         body: JSON.stringify(data),
       });
-      return result;
+      return result?.data || result;
     },
 
     getReport: async () => {
       const data = await apiCall(
         `${API_BASE_URL}/api/stock-movements/report/summary`
       );
-      return data;
+      return data?.data || data;
     },
 
     seedSampleData: async () => {
@@ -471,14 +538,14 @@ export const api = {
           method: "POST",
         }
       );
-      return result;
+      return result?.data || result;
     },
 
     getProductHistory: async (productId: string) => {
       const data = await apiCall(
         `${API_BASE_URL}/api/stock-movements/product/${productId}`
       );
-      return data;
+      return data?.data || data;
     },
   },
 
@@ -669,10 +736,10 @@ export const authDebug = {
       console.log("📊 Daily Sales:", {
         totalSales: dailySales?.summary?.totalSales,
         paymentSplit: dailySales?.paymentInsights?.split?.map(
-          (p) => `${p.method}: ${p.percentage}%`
+          (p: any) => `${p.method}: ${p.percentage}%`
         ),
         channelSplit: dailySales?.channelInsights?.split?.map(
-          (c) => `${c.channel}: ${c.percentage}%`
+          (c: any) => `${c.channel}: ${c.percentage}%`
         ),
       });
 
@@ -882,4 +949,30 @@ export const getStockMovementColor = (type: StockMovementType): string => {
     refund: "#3b82f6", // Blue
   };
   return colors[type] || "#6b7280";
+};
+
+// Helper to check if user is authenticated
+export const isAuthenticated = (): boolean => {
+  const token = localStorage.getItem("token");
+  if (!token) return false;
+
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1]));
+    return Date.now() < payload.exp * 1000;
+  } catch {
+    return false;
+  }
+};
+
+// Helper to get user role
+export const getUserRole = (): string | null => {
+  const token = localStorage.getItem("token");
+  if (!token) return null;
+
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1]));
+    return payload.role || null;
+  } catch {
+    return null;
+  }
 };

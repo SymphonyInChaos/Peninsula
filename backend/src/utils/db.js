@@ -20,30 +20,19 @@ export const ORDER_STATUSES = {
   REFUNDED: "refunded",
 };
 
+// REMOVE STATUS FLOW VALIDATION - ALLOW ANY TRANSITION
 export const ORDER_STATUS_FLOW = {
-  [ORDER_STATUSES.PENDING]: [
-    ORDER_STATUSES.CONFIRMED,
-    ORDER_STATUSES.CANCELLED,
-  ],
-  [ORDER_STATUSES.CONFIRMED]: [
-    ORDER_STATUSES.PROCESSING,
-    ORDER_STATUSES.CANCELLED,
-  ],
-  [ORDER_STATUSES.PROCESSING]: [
-    ORDER_STATUSES.COMPLETED,
-    ORDER_STATUSES.CANCELLED,
-  ],
-  [ORDER_STATUSES.COMPLETED]: [ORDER_STATUSES.REFUNDED],
-  [ORDER_STATUSES.CANCELLED]: [],
-  [ORDER_STATUSES.REFUNDED]: [],
+  [ORDER_STATUSES.PENDING]: Object.values(ORDER_STATUSES),
+  [ORDER_STATUSES.CONFIRMED]: Object.values(ORDER_STATUSES),
+  [ORDER_STATUSES.PROCESSING]: Object.values(ORDER_STATUSES),
+  [ORDER_STATUSES.COMPLETED]: Object.values(ORDER_STATUSES),
+  [ORDER_STATUSES.CANCELLED]: Object.values(ORDER_STATUSES),
+  [ORDER_STATUSES.REFUNDED]: Object.values(ORDER_STATUSES),
 };
 
-// Validate status transition
+// UPDATED: Allow any status transition
 export const validateStatusTransition = (currentStatus, newStatus) => {
-  if (!currentStatus) return true; // New order, can start with any valid status
-
-  const allowedTransitions = ORDER_STATUS_FLOW[currentStatus] || [];
-  return allowedTransitions.includes(newStatus);
+  return true; // Always allow any status change
 };
 
 // Enhanced Validation Schemas

@@ -86,7 +86,7 @@ model AuditLog {
   userRole  String?
   timestamp DateTime @default(now())
   ipAddress String?
-
+reason    String?  // ADD THIS LINE
   @@map("audit_logs")
 }
 
