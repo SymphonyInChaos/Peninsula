@@ -1,20 +1,27 @@
 // routes/orders.js
 import { Router } from "express";
-import prisma, { validateOrder } from "../utils/db.js";
+import prisma, { validateOrder, ORDER_STATUSES } from "../utils/db.js";
 import { generateNextId } from "../utils/idGenerator.js";
 
 const router = Router();
 
-// CORRECTED: Changed 'customers' to 'customer'
+// SIMPLIFIED: Allow any status transition
+const validateStatusTransition = (currentStatus, newStatus) => {
+  return true; // Allow all transitions
+};
+
+// Order includes
 const orderIncludes = {
-  customer: true, // SINGULAR - matches your Prisma schema
+  customer: true,
   items: {
     include: {
       product: true,
     },
   },
+  payments: true,
 };
 
+// Parse items
 const parseItems = (items) => {
   if (!Array.isArray(items)) {
     return null;
@@ -36,24 +43,101 @@ const parseItems = (items) => {
   return normalized;
 };
 
-router.get("/", async (_req, res) => {
+// ==================== ORDER CRUD ENDPOINTS ====================
+
+// GET all orders with filters
+router.get("/", async (req, res) => {
   try {
-    const orders = await prisma.order.findMany({
-      include: orderIncludes,
-      orderBy: { createdAt: "desc" },
+    const {
+      status,
+      customerId,
+      startDate,
+      endDate,
+      limit = 50,
+      page = 1,
+      search,
+      paymentMethod,
+    } = req.query;
+
+    const where = {};
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    if (status) {
+      where.status = status;
+    }
+
+    if (customerId) {
+      where.customerId = customerId;
+    }
+
+    if (paymentMethod) {
+      where.paymentMethod = paymentMethod;
+    }
+
+    if (startDate || endDate) {
+      where.createdAt = {};
+      if (startDate) where.createdAt.gte = new Date(startDate);
+      if (endDate) where.createdAt.lte = new Date(endDate);
+    }
+
+    if (search) {
+      where.OR = [
+        { id: { contains: search, mode: "insensitive" } },
+        { customer: { name: { contains: search, mode: "insensitive" } } },
+        { paymentReference: { contains: search, mode: "insensitive" } },
+      ];
+    }
+
+    const [orders, total] = await Promise.all([
+      prisma.order.findMany({
+        where,
+        include: orderIncludes,
+        orderBy: { createdAt: "desc" },
+        take: parseInt(limit) || 50,
+        skip,
+      }),
+      prisma.order.count({ where }),
+    ]);
+
+    res.json({
+      orders,
+      pagination: {
+        total,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        pages: Math.ceil(total / parseInt(limit)),
+      },
     });
-    res.json(orders);
   } catch (error) {
     console.error("Failed to fetch orders", error);
     res.status(500).json({ message: "Failed to fetch orders" });
   }
 });
 
+// GET single order
 router.get("/:id", async (req, res) => {
   try {
     const order = await prisma.order.findUnique({
       where: { id: req.params.id },
-      include: orderIncludes,
+      include: {
+        customer: true,
+        items: {
+          include: {
+            product: {
+              select: {
+                id: true,
+                name: true,
+                price: true,
+                sku: true,
+                category: true,
+                stock: true,
+              },
+            },
+          },
+        },
+        payments: true,
+        refunds: true,
+      },
     });
 
     if (!order) {
@@ -67,9 +151,26 @@ router.get("/:id", async (req, res) => {
   }
 });
 
+// POST create order - ORDER SHOULD BE PENDING INITIALLY
 router.post("/", async (req, res) => {
   try {
-    const { customerId = null, items, paymentMethod = "cash" } = req.body;
+    const {
+      customerId = null,
+      items,
+      paymentMethod = "cash",
+      status = ORDER_STATUSES.PENDING, // Default to PENDING
+      paymentReference = null,
+      cashierId = null,
+      notes,
+    } = req.body;
+
+    // IMPORTANT: Always set status to PENDING for new orders
+    const finalStatus = ORDER_STATUSES.PENDING;
+
+    // Validate status (should be PENDING for new orders)
+    if (status !== ORDER_STATUSES.PENDING) {
+      console.warn(`Order creation: Status forced to PENDING. Received: ${status}`);
+    }
 
     const normalizedItems = parseItems(items);
 
@@ -78,7 +179,14 @@ router.post("/", async (req, res) => {
     }
 
     // Validate payment method
-    const validPaymentMethods = ["cash", "upi", "card", "other"];
+    const validPaymentMethods = [
+      "cash",
+      "upi",
+      "card",
+      "other",
+      "wallet",
+      "qr",
+    ];
     const normalizedPaymentMethod = validPaymentMethods.includes(
       paymentMethod.toLowerCase()
     )
@@ -90,6 +198,9 @@ router.post("/", async (req, res) => {
       customerId,
       items: normalizedItems,
       paymentMethod: normalizedPaymentMethod,
+      status: finalStatus, // Use finalStatus (PENDING)
+      paymentReference,
+      cashierId,
     });
 
     // If customerId is provided, check if customer exists
@@ -103,8 +214,28 @@ router.post("/", async (req, res) => {
       }
     }
 
+    // Check cashier if provided
+    let finalCashierId = cashierId;
+    if (finalCashierId) {
+      const cashierExists = await prisma.user.findUnique({
+        where: { id: finalCashierId },
+      });
+
+      if (!cashierExists) {
+        // If cashier is "system", allow it (system user)
+        if (finalCashierId === "system") {
+          console.log("✅ Using system cashier");
+        } else {
+          return res.status(400).json({ message: "Cashier not found" });
+        }
+      }
+    } else {
+      // If no cashierId provided or it's empty/null, set to null
+      finalCashierId = null;
+    }
+
     const productIds = [
-      ...new Set(validatedData.items.map((item) => item.productId)),
+      ...new Set(normalizedItems.map((item) => item.productId)),
     ];
 
     const products = await prisma.product.findMany({
@@ -117,58 +248,37 @@ router.post("/", async (req, res) => {
         .json({ message: "One or more products are invalid" });
     }
 
-    // Check stock availability
-    const stockIssues = [];
-    for (const item of validatedData.items) {
-      const product = products.find((p) => p.id === item.productId);
-      if (product && product.stock < item.qty) {
-        stockIssues.push({
-          product: product.name,
-          requested: item.qty,
-          available: product.stock,
-        });
-      }
-    }
-
-    if (stockIssues.length > 0) {
-      return res.status(400).json({
-        message: "Insufficient stock for some products",
-        stockIssues,
-      });
-    }
-
+    // For PENDING orders, don't check stock availability yet
+    // Stock will be checked when order is confirmed/completed
     const priceMap = new Map(
       products.map((product) => [product.id, product.price])
     );
 
-    const total = validatedData.items.reduce(
+    const total = normalizedItems.reduce(
       (acc, item) => acc + priceMap.get(item.productId) * item.qty,
       0
     );
 
-    const id = await generateNextId("o", "order");
-
+    // Generate ID within transaction to ensure consistency
     const order = await prisma.$transaction(async (tx) => {
-      // Update product stocks
-      for (const item of validatedData.items) {
-        await tx.product.update({
-          where: { id: item.productId },
-          data: {
-            stock: {
-              decrement: item.qty,
-            },
-          },
-        });
-      }
-
-      return tx.order.create({
+      // Generate ID
+      const orderId = await generateNextId("o", "order");
+      
+      // DON'T update product stocks for PENDING orders
+      // Stocks will be updated when order is confirmed/completed
+      
+      // Create the order with PENDING status
+      const newOrder = await tx.order.create({
         data: {
-          id,
-          customerId: validatedData.customerId,
+          id: orderId,
+          customerId: customerId || null,
           total,
-          paymentMethod: validatedData.paymentMethod,
+          paymentMethod: normalizedPaymentMethod,
+          status: finalStatus, // PENDING
+          paymentReference: paymentReference || null,
+          cashierId: finalCashierId || null,
           items: {
-            create: validatedData.items.map((item) => ({
+            create: normalizedItems.map((item) => ({
               qty: item.qty,
               price: priceMap.get(item.productId),
               product: {
@@ -179,6 +289,45 @@ router.post("/", async (req, res) => {
         },
         include: orderIncludes,
       });
+
+      // Create payment record with 'pending' status (NOT completed)
+      if (total > 0) {
+        console.log(`Creating PENDING payment for orderId: ${newOrder.id}`);
+        
+        try {
+          await tx.payment.create({
+            data: {
+              orderId: newOrder.id,
+              method: normalizedPaymentMethod,
+              amount: total,
+              reference: paymentReference,
+              status: 'pending', // Payment is pending initially
+              processedAt: null // Not processed yet
+            },
+          });
+          console.log(`✅ PENDING payment created for order ${newOrder.id}`);
+        } catch (paymentError) {
+          console.error(`❌ Failed to create payment for order ${newOrder.id}:`, paymentError);
+          throw paymentError;
+        }
+      }
+
+      return newOrder;
+    }, {
+      maxWait: 5000,
+      timeout: 10000,
+    });
+
+    // Create audit log
+    await prisma.auditLog.create({
+      data: {
+        action: "CREATE",
+        entity: "Order",
+        entityId: order.id,
+        newValues: order,
+        userId: finalCashierId || "system",
+        userRole: "SYSTEM",
+      },
     });
 
     res.status(201).json(order);
@@ -191,13 +340,354 @@ router.post("/", async (req, res) => {
     }
 
     console.error("Failed to create order", error);
-    res.status(500).json({ message: "Failed to create order" });
+    
+    if (error.code === 'P2003') {
+      console.error('Foreign key constraint failed:', error.meta);
+      return res.status(500).json({ 
+        message: "Failed to create order - constraint violation",
+        details: error.meta,
+        suggestion: "Check if payment table has correct foreign key relationship"
+      });
+    }
+    
+    res.status(500).json({ 
+      message: "Failed to create order", 
+      error: error.message,
+      code: error.code 
+    });
   }
 });
 
+// ADD THIS ENDPOINT: Confirm/Pay for an order
+router.post("/:id/confirm", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { paymentStatus = "completed" } = req.body;
+
+    // Get current order
+    const existingOrder = await prisma.order.findUnique({
+      where: { id },
+      include: {
+        items: {
+          include: {
+            product: true,
+          },
+        },
+        payments: true,
+      },
+    });
+
+    if (!existingOrder) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    // Check if order is already completed
+    if (existingOrder.status === ORDER_STATUSES.COMPLETED) {
+      return res.status(400).json({ message: "Order is already completed" });
+    }
+
+    // Check stock availability before confirming
+    const stockIssues = [];
+    for (const item of existingOrder.items) {
+      const product = item.product;
+      if (product && product.stock < item.qty) {
+        stockIssues.push({
+          product: product.name,
+          requested: item.qty,
+          available: product.stock,
+        });
+      }
+    }
+
+    if (stockIssues.length > 0) {
+      return res.status(400).json({
+        message: "Cannot confirm order: Insufficient stock",
+        stockIssues,
+      });
+    }
+
+    const order = await prisma.$transaction(async (tx) => {
+      // Update product stocks
+      for (const item of existingOrder.items) {
+        const product = item.product;
+        const oldStock = product.stock;
+        
+        await tx.product.update({
+          where: { id: item.productId },
+          data: {
+            stock: {
+              decrement: item.qty,
+            },
+          },
+        });
+
+        // Create stock movement record
+        await tx.stockMovement.create({
+          data: {
+            productId: item.productId,
+            type: "sale",
+            quantity: item.qty,
+            oldStock,
+            newStock: oldStock - item.qty,
+            reason: `Order ${id} confirmed`,
+          },
+        });
+      }
+
+      // Update order status to COMPLETED
+      const updatedOrder = await tx.order.update({
+        where: { id },
+        data: {
+          status: ORDER_STATUSES.COMPLETED,
+        },
+        include: orderIncludes,
+      });
+
+      // Update payment status
+      const payment = existingOrder.payments[0];
+      if (payment) {
+        await tx.payment.update({
+          where: { id: payment.id },
+          data: {
+            status: paymentStatus,
+            processedAt: new Date(),
+          },
+        });
+      }
+
+      return updatedOrder;
+    });
+
+    // Create audit log
+    await prisma.auditLog.create({
+      data: {
+        action: "CONFIRM",
+        entity: "Order",
+        entityId: id,
+        oldValues: { status: existingOrder.status },
+        newValues: { status: ORDER_STATUSES.COMPLETED },
+        userId: req.user?.id || "system",
+        userRole: req.user?.role || "SYSTEM",
+        reason: "Order confirmed and paid",
+      },
+    });
+
+    res.json({
+      message: "Order confirmed successfully",
+      order,
+    });
+  } catch (error) {
+    console.error("Failed to confirm order", error);
+    res.status(500).json({ message: "Failed to confirm order" });
+  }
+});
+
+// SIMPLIFIED: PATCH update order status (ALLOW ANY TRANSITION)
+router.patch("/:id/status", async (req, res) => {
+  try {
+    const { status, reason } = req.body;
+    const { id } = req.params;
+
+    // Validate status
+    if (!Object.values(ORDER_STATUSES).includes(status)) {
+      return res.status(400).json({
+        message: `Invalid status. Valid statuses: ${Object.values(
+          ORDER_STATUSES
+        ).join(", ")}`,
+      });
+    }
+
+    // Get current order with items
+    const existingOrder = await prisma.order.findUnique({
+      where: { id },
+      include: {
+        items: {
+          include: {
+            product: true,
+          },
+        },
+        payments: true,
+      },
+    });
+
+    if (!existingOrder) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    // ALLOW ANY STATUS TRANSITION
+    const order = await prisma.$transaction(async (tx) => {
+      // Handle stock adjustments based on status changes
+      
+      // If moving to COMPLETED from PENDING
+      if (status === ORDER_STATUSES.COMPLETED && 
+          existingOrder.status === ORDER_STATUSES.PENDING) {
+        // Check stock availability
+        for (const item of existingOrder.items) {
+          const product = item.product;
+          if (product && product.stock < item.qty) {
+            throw new Error(`Insufficient stock for ${product.name}`);
+          }
+        }
+        
+        // Deduct stock
+        for (const item of existingOrder.items) {
+          const product = item.product;
+          const oldStock = product.stock;
+          
+          await tx.product.update({
+            where: { id: item.productId },
+            data: {
+              stock: {
+                decrement: item.qty,
+              },
+            },
+          });
+
+          await tx.stockMovement.create({
+            data: {
+              productId: item.productId,
+              type: "sale",
+              quantity: item.qty,
+              oldStock,
+              newStock: oldStock - item.qty,
+              reason: `Order ${id} completed`,
+            },
+          });
+        }
+        
+        // Update payment status to completed
+        const payment = existingOrder.payments[0];
+        if (payment) {
+          await tx.payment.update({
+            where: { id: payment.id },
+            data: {
+              status: 'completed',
+              processedAt: new Date(),
+            },
+          });
+        }
+      }
+      
+      // If moving from COMPLETED to CANCELLED/REFUNDED
+      else if (
+        (status === ORDER_STATUSES.CANCELLED ||
+         status === ORDER_STATUSES.REFUNDED) &&
+        existingOrder.status === ORDER_STATUSES.COMPLETED
+      ) {
+        // Restore stock
+        for (const item of existingOrder.items) {
+          const product = item.product;
+          const oldStock = product.stock;
+          
+          await tx.product.update({
+            where: { id: item.productId },
+            data: {
+              stock: {
+                increment: item.qty,
+              },
+            },
+          });
+
+          await tx.stockMovement.create({
+            data: {
+              productId: item.productId,
+              type: status === ORDER_STATUSES.REFUNDED ? "refund" : "adjustment",
+              quantity: item.qty,
+              oldStock,
+              newStock: oldStock + item.qty,
+              reason: `Order ${id} ${status}: ${reason || "No reason provided"}`,
+            },
+          });
+        }
+
+        // Update payment status to refunded
+        const payment = existingOrder.payments[0];
+        if (payment) {
+          await tx.payment.update({
+            where: { id: payment.id },
+            data: {
+              status: 'refunded',
+            },
+          });
+        }
+
+        // Create refund record if status is refunded
+        if (status === ORDER_STATUSES.REFUNDED) {
+          await tx.refund.create({
+            data: {
+              orderId: id,
+              amount: existingOrder.total,
+              reason: reason || "No reason provided",
+            },
+          });
+        }
+      }
+      
+      // If moving from PENDING to CANCELLED - no stock changes needed
+      else if (
+        (status === ORDER_STATUSES.CANCELLED ||
+         status === ORDER_STATUSES.REFUNDED) &&
+        existingOrder.status === ORDER_STATUSES.PENDING
+      ) {
+        // Update payment status
+        const payment = existingOrder.payments[0];
+        if (payment) {
+          await tx.payment.update({
+            where: { id: payment.id },
+            data: {
+              status: 'cancelled',
+            },
+          });
+        }
+      }
+
+      // Update order status
+      return tx.order.update({
+        where: { id },
+        data: { status },
+        include: orderIncludes,
+      });
+    });
+
+    // Create audit log
+    await prisma.auditLog.create({
+      data: {
+        action: "UPDATE_STATUS",
+        entity: "Order",
+        entityId: id,
+        oldValues: { status: existingOrder.status },
+        newValues: { status },
+        userId: req.user?.id || "system",
+        userRole: req.user?.role || "SYSTEM",
+        reason: reason || "Status updated",
+      },
+    });
+
+    res.json(order);
+  } catch (error) {
+    console.error("Failed to update order status", error);
+    
+    if (error.message.startsWith("Insufficient stock")) {
+      return res.status(400).json({
+        message: error.message,
+      });
+    }
+    
+    res.status(500).json({ message: "Failed to update order status" });
+  }
+});
+
+// SIMPLIFIED: PUT update order (ALLOW ANY TRANSITION)
 router.put("/:id", async (req, res) => {
   try {
-    const { customerId, items, paymentMethod } = req.body;
+    const {
+      customerId,
+      items,
+      paymentMethod,
+      status,
+      paymentReference,
+      cashierId,
+    } = req.body;
 
     const normalizedItems = items === undefined ? undefined : parseItems(items);
 
@@ -208,10 +698,29 @@ router.put("/:id", async (req, res) => {
       return res.status(400).json({ message: "Order items are invalid" });
     }
 
+    // Validate status if provided
+    if (
+      status !== undefined &&
+      !Object.values(ORDER_STATUSES).includes(status)
+    ) {
+      return res.status(400).json({
+        message: `Invalid status. Valid statuses: ${Object.values(
+          ORDER_STATUSES
+        ).join(", ")}`,
+      });
+    }
+
     // Validate payment method if provided
     let normalizedPaymentMethod;
     if (paymentMethod !== undefined) {
-      const validPaymentMethods = ["cash", "upi", "card", "other"];
+      const validPaymentMethods = [
+        "cash",
+        "upi",
+        "card",
+        "other",
+        "wallet",
+        "qr",
+      ];
       normalizedPaymentMethod = validPaymentMethods.includes(
         paymentMethod.toLowerCase()
       )
@@ -219,26 +728,17 @@ router.put("/:id", async (req, res) => {
         : "cash";
     }
 
-    // Validate order structure if items are provided
-    if (normalizedItems) {
-      try {
-        validateOrder({
-          customerId: customerId !== undefined ? customerId : null,
-          items: normalizedItems,
-          paymentMethod: normalizedPaymentMethod || "cash",
-        });
-      } catch (validationError) {
-        return res.status(400).json({
-          message: "Validation failed",
-          errors: validationError.errors,
-        });
-      }
-    }
-
     const order = await prisma.$transaction(async (tx) => {
       const existing = await tx.order.findUnique({
         where: { id: req.params.id },
-        include: { items: true },
+        include: {
+          items: {
+            include: {
+              product: true,
+            },
+          },
+          payments: true,
+        },
       });
 
       if (!existing) {
@@ -246,6 +746,136 @@ router.put("/:id", async (req, res) => {
       }
 
       let updateData = {};
+
+      // Handle status update
+      if (status !== undefined) {
+        // Handle stock adjustments for status changes
+        
+        // If moving to COMPLETED from PENDING
+        if (status === ORDER_STATUSES.COMPLETED && 
+            existing.status === ORDER_STATUSES.PENDING) {
+          // Check stock availability
+          for (const item of existing.items) {
+            const product = item.product;
+            if (product && product.stock < item.qty) {
+              throw new Error(`Insufficient stock for ${product.name}`);
+            }
+          }
+          
+          // Deduct stock
+          for (const item of existing.items) {
+            const product = item.product;
+            const oldStock = product.stock;
+            
+            await tx.product.update({
+              where: { id: item.productId },
+              data: {
+                stock: {
+                  decrement: item.qty,
+                },
+              },
+            });
+
+            await tx.stockMovement.create({
+              data: {
+                productId: item.productId,
+                type: "sale",
+                quantity: item.qty,
+                oldStock,
+                newStock: oldStock - item.qty,
+                reason: `Order ${existing.id} completed via update`,
+              },
+            });
+          }
+          
+          // Update payment status
+          const payment = existing.payments[0];
+          if (payment) {
+            await tx.payment.update({
+              where: { id: payment.id },
+              data: {
+                status: 'completed',
+                processedAt: new Date(),
+              },
+            });
+          }
+        }
+        
+        // If moving from COMPLETED to CANCELLED/REFUNDED
+        else if (
+          (status === ORDER_STATUSES.CANCELLED ||
+           status === ORDER_STATUSES.REFUNDED) &&
+          existing.status === ORDER_STATUSES.COMPLETED
+        ) {
+          // Restore stock
+          for (const item of existing.items) {
+            const product = item.product;
+            const oldStock = product.stock;
+            
+            await tx.product.update({
+              where: { id: item.productId },
+              data: {
+                stock: {
+                  increment: item.qty,
+                },
+              },
+            });
+
+            await tx.stockMovement.create({
+              data: {
+                productId: item.productId,
+                type: status === ORDER_STATUSES.REFUNDED ? "refund" : "adjustment",
+                quantity: item.qty,
+                oldStock,
+                newStock: oldStock + item.qty,
+                reason: `Order ${existing.id} ${status} via update`,
+              },
+            });
+          }
+
+          // Update payment status
+          const payment = existing.payments[0];
+          if (payment) {
+            await tx.payment.update({
+              where: { id: payment.id },
+              data: {
+                status: 'refunded',
+              },
+            });
+          }
+
+          // Create refund record if status is refunded
+          if (status === ORDER_STATUSES.REFUNDED) {
+            await tx.refund.create({
+              data: {
+                orderId: existing.id,
+                amount: existing.total,
+                reason: "Order updated to refunded",
+              },
+            });
+          }
+        }
+        
+        // If moving from PENDING to CANCELLED
+        else if (
+          (status === ORDER_STATUSES.CANCELLED ||
+           status === ORDER_STATUSES.REFUNDED) &&
+          existing.status === ORDER_STATUSES.PENDING
+        ) {
+          // Update payment status
+          const payment = existing.payments[0];
+          if (payment) {
+            await tx.payment.update({
+              where: { id: payment.id },
+              data: {
+                status: 'cancelled',
+              },
+            });
+          }
+        }
+
+        updateData.status = status;
+      }
 
       if (customerId !== undefined) {
         // Check if customer exists when customerId is provided
@@ -265,6 +895,23 @@ router.put("/:id", async (req, res) => {
         updateData.paymentMethod = normalizedPaymentMethod;
       }
 
+      if (paymentReference !== undefined) {
+        updateData.paymentReference = paymentReference;
+      }
+
+      if (cashierId !== undefined) {
+        if (cashierId) {
+          const cashierExists = await tx.user.findUnique({
+            where: { id: cashierId },
+          });
+
+          if (!cashierExists) {
+            throw new Error("CASHIER_NOT_FOUND");
+          }
+        }
+        updateData.cashierId = cashierId ?? null;
+      }
+
       if (normalizedItems !== undefined) {
         const productIds = [
           ...new Set(normalizedItems.map((item) => item.productId)),
@@ -278,29 +925,32 @@ router.put("/:id", async (req, res) => {
           throw new Error("INVALID_PRODUCTS");
         }
 
-        // Check stock availability (considering current order items)
-        const currentProductQtys = new Map();
-        for (const item of existing.items) {
-          currentProductQtys.set(item.productId, item.qty);
-        }
-
-        const stockIssues = [];
-        for (const item of normalizedItems) {
-          const product = products.find((p) => p.id === item.productId);
-          const currentQty = currentProductQtys.get(item.productId) || 0;
-          const stockChange = item.qty - currentQty;
-
-          if (product && product.stock < stockChange) {
-            stockIssues.push({
-              product: product.name,
-              requestedChange: stockChange,
-              available: product.stock,
-            });
+        // For PENDING orders, don't check stock
+        // For COMPLETED orders, check stock availability
+        if (existing.status === ORDER_STATUSES.COMPLETED) {
+          const currentProductQtys = new Map();
+          for (const item of existing.items) {
+            currentProductQtys.set(item.productId, item.qty);
           }
-        }
 
-        if (stockIssues.length > 0) {
-          throw new Error("INSUFFICIENT_STOCK");
+          const stockIssues = [];
+          for (const item of normalizedItems) {
+            const product = products.find((p) => p.id === item.productId);
+            const currentQty = currentProductQtys.get(item.productId) || 0;
+            const stockChange = item.qty - currentQty;
+
+            if (stockChange > 0 && product && product.stock < stockChange) {
+              stockIssues.push({
+                product: product.name,
+                requestedChange: stockChange,
+                available: product.stock,
+              });
+            }
+          }
+
+          if (stockIssues.length > 0) {
+            throw new Error("INSUFFICIENT_STOCK");
+          }
         }
 
         const priceMap = new Map(
@@ -312,20 +962,36 @@ router.put("/:id", async (req, res) => {
           0
         );
 
-        // Update product stocks
-        for (const item of normalizedItems) {
-          const currentQty = currentProductQtys.get(item.productId) || 0;
-          const stockChange = item.qty - currentQty;
+        // Only update product stocks if order is COMPLETED
+        if (existing.status === ORDER_STATUSES.COMPLETED) {
+          for (const item of normalizedItems) {
+            const currentQty = currentProductQtys.get(item.productId) || 0;
+            const stockChange = item.qty - currentQty;
 
-          if (stockChange !== 0) {
-            await tx.product.update({
-              where: { id: item.productId },
-              data: {
-                stock: {
-                  decrement: stockChange,
+            if (stockChange !== 0) {
+              const product = products.find((p) => p.id === item.productId);
+              const oldStock = product.stock;
+
+              await tx.product.update({
+                where: { id: item.productId },
+                data: {
+                  stock: {
+                    decrement: stockChange,
+                  },
                 },
-              },
-            });
+              });
+
+              await tx.stockMovement.create({
+                data: {
+                  productId: item.productId,
+                  type: stockChange > 0 ? "sale" : "adjustment",
+                  quantity: Math.abs(stockChange),
+                  oldStock,
+                  newStock: oldStock - stockChange,
+                  reason: `Order ${existing.id} item quantity update`,
+                },
+              });
+            }
           }
         }
 
@@ -364,6 +1030,18 @@ router.put("/:id", async (req, res) => {
       return res.status(404).json({ message: "Order not found" });
     }
 
+    // Create audit log
+    await prisma.auditLog.create({
+      data: {
+        action: "UPDATE",
+        entity: "Order",
+        entityId: order.id,
+        newValues: order,
+        userId: req.user?.id || "system",
+        userRole: req.user?.role || "SYSTEM",
+      },
+    });
+
     res.json(order);
   } catch (error) {
     if (error.message === "CUSTOMER_NOT_FOUND") {
@@ -382,38 +1060,77 @@ router.put("/:id", async (req, res) => {
         .json({ message: "Insufficient stock for updated quantities" });
     }
 
+    if (error.message === "CASHIER_NOT_FOUND") {
+      return res.status(400).json({ message: "Cashier not found" });
+    }
+
+    if (error.message.startsWith("Insufficient stock")) {
+      return res.status(400).json({
+        message: error.message,
+      });
+    }
+
     console.error("Failed to update order", error);
     res.status(500).json({ message: "Failed to update order" });
   }
 });
 
+// DELETE order
 router.delete("/:id", async (req, res) => {
   try {
     // First, check if order exists
     const order = await prisma.order.findUnique({
       where: { id: req.params.id },
-      include: { items: true },
+      include: {
+        items: {
+          include: {
+            product: true,
+          },
+        },
+      },
     });
 
     if (!order) {
       return res.status(404).json({ message: "Order not found" });
     }
 
-    // Restore product stock and delete order
+    // Only restore stock if order was COMPLETED
     await prisma.$transaction(async (tx) => {
-      // Restore product stock
-      for (const item of order.items) {
-        await tx.product.update({
-          where: { id: item.productId },
-          data: {
-            stock: {
-              increment: item.qty,
+      if (order.status === ORDER_STATUSES.COMPLETED) {
+        // Restore product stock
+        for (const item of order.items) {
+          const oldStock = item.product.stock;
+          await tx.product.update({
+            where: { id: item.productId },
+            data: {
+              stock: {
+                increment: item.qty,
+              },
             },
-          },
-        });
+          });
+
+          await tx.stockMovement.create({
+            data: {
+              productId: item.productId,
+              type: "adjustment",
+              quantity: item.qty,
+              oldStock,
+              newStock: oldStock + item.qty,
+              reason: `Order ${order.id} deleted`,
+            },
+          });
+        }
       }
 
-      // Delete all order items for this order
+      // Delete related records
+      await tx.payment.deleteMany({
+        where: { orderId: req.params.id },
+      });
+
+      await tx.refund.deleteMany({
+        where: { orderId: req.params.id },
+      });
+
       await tx.orderItem.deleteMany({
         where: { orderId: req.params.id },
       });
@@ -422,6 +1139,18 @@ router.delete("/:id", async (req, res) => {
       await tx.order.delete({
         where: { id: req.params.id },
       });
+    });
+
+    // Create audit log
+    await prisma.auditLog.create({
+      data: {
+        action: "DELETE",
+        entity: "Order",
+        entityId: req.params.id,
+        oldValues: order,
+        userId: req.user?.id || "system",
+        userRole: req.user?.role || "SYSTEM",
+      },
     });
 
     res.status(204).send();
@@ -435,7 +1164,259 @@ router.delete("/:id", async (req, res) => {
   }
 });
 
-// New endpoint: Get payment method statistics
+// ==================== ORDER QUERY ENDPOINTS ====================
+
+// GET orders by status
+router.get("/status/:status", async (req, res) => {
+  try {
+    const { status } = req.params;
+    const { startDate, endDate, limit = 50, page = 1 } = req.query;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    // Validate status
+    if (!Object.values(ORDER_STATUSES).includes(status)) {
+      return res.status(400).json({
+        message: `Invalid status. Valid statuses: ${Object.values(
+          ORDER_STATUSES
+        ).join(", ")}`,
+      });
+    }
+
+    const where = { status };
+
+    if (startDate || endDate) {
+      where.createdAt = {};
+      if (startDate) where.createdAt.gte = new Date(startDate);
+      if (endDate) where.createdAt.lte = new Date(endDate);
+    }
+
+    const [orders, total] = await Promise.all([
+      prisma.order.findMany({
+        where,
+        include: orderIncludes,
+        orderBy: { createdAt: "desc" },
+        take: parseInt(limit) || 50,
+        skip,
+      }),
+      prisma.order.count({ where }),
+    ]);
+
+    res.json({
+      orders,
+      pagination: {
+        total,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        pages: Math.ceil(total / parseInt(limit)),
+      },
+      summary: {
+        status,
+        count: total,
+        totalRevenue: orders.reduce((sum, order) => sum + order.total, 0),
+      },
+    });
+  } catch (error) {
+    console.error("Failed to fetch orders by status", error);
+    res.status(500).json({ message: "Failed to fetch orders by status" });
+  }
+});
+
+// GET today's orders summary
+router.get("/summary/today", async (req, res) => {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const orders = await prisma.order.findMany({
+      where: {
+        createdAt: {
+          gte: today,
+          lt: tomorrow,
+        },
+      },
+      include: {
+        items: {
+          include: {
+            product: true,
+          },
+        },
+      },
+    });
+
+    const summary = {
+      totalOrders: orders.length,
+      totalRevenue: orders.reduce((sum, order) => sum + order.total, 0),
+      totalItems: orders.reduce(
+        (sum, order) =>
+          sum + order.items.reduce((itemSum, item) => itemSum + item.qty, 0),
+        0
+      ),
+      byStatus: orders.reduce((acc, order) => {
+        const status = order.status || "pending";
+        acc[status] = (acc[status] || 0) + 1;
+        return acc;
+      }, {}),
+      byPaymentMethod: orders.reduce((acc, order) => {
+        const method = order.paymentMethod || "cash";
+        acc[method] = (acc[method] || 0) + 1;
+        return acc;
+      }, {}),
+      byChannel: {
+        online: orders.filter((order) => order.customerId).length,
+        offline: orders.filter((order) => !order.customerId).length,
+      },
+      topProducts: orders
+        .flatMap((order) =>
+          order.items.map((item) => ({
+            productId: item.productId,
+            name: item.product.name,
+            quantity: item.qty,
+            revenue: item.qty * item.price,
+          }))
+        )
+        .reduce((acc, item) => {
+          if (!acc[item.productId]) {
+            acc[item.productId] = { ...item };
+          } else {
+            acc[item.productId].quantity += item.quantity;
+            acc[item.productId].revenue += item.revenue;
+          }
+          return acc;
+        }, {}),
+      hourlyBreakdown: Array.from({ length: 24 }, (_, i) => ({
+        hour: i,
+        orders: 0,
+        revenue: 0,
+      })),
+    };
+
+    // Calculate hourly breakdown
+    orders.forEach((order) => {
+      const hour = new Date(order.createdAt).getHours();
+      summary.hourlyBreakdown[hour].orders += 1;
+      summary.hourlyBreakdown[hour].revenue += order.total;
+    });
+
+    // Convert top products to array and sort
+    summary.topProducts = Object.values(summary.topProducts)
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 10);
+
+    res.json(summary);
+  } catch (error) {
+    console.error("Failed to fetch today's summary", error);
+    res.status(500).json({ message: "Failed to fetch today's summary" });
+  }
+});
+
+// GET orders summary by date range
+router.get("/summary/range", async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+
+    if (!startDate || !endDate) {
+      return res.status(400).json({
+        message: "startDate and endDate are required",
+      });
+    }
+
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+
+    const orders = await prisma.order.findMany({
+      where: {
+        createdAt: {
+          gte: start,
+          lte: end,
+        },
+      },
+      include: {
+        items: {
+          include: {
+            product: true,
+          },
+        },
+      },
+    });
+
+    const summary = {
+      dateRange: {
+        start: startDate,
+        end: endDate,
+      },
+      totalOrders: orders.length,
+      totalRevenue: orders.reduce((sum, order) => sum + order.total, 0),
+      totalItems: orders.reduce(
+        (sum, order) =>
+          sum + order.items.reduce((itemSum, item) => itemSum + item.qty, 0),
+        0
+      ),
+      completedOrders: orders.filter(
+        (o) => o.status === ORDER_STATUSES.COMPLETED
+      ).length,
+      cancelledOrders: orders.filter(
+        (o) => o.status === ORDER_STATUSES.CANCELLED
+      ).length,
+      refundedOrders: orders.filter((o) => o.status === ORDER_STATUSES.REFUNDED)
+        .length,
+      byStatus: orders.reduce((acc, order) => {
+        const status = order.status || "pending";
+        acc[status] = (acc[status] || 0) + 1;
+        return acc;
+      }, {}),
+      byPaymentMethod: orders.reduce((acc, order) => {
+        const method = order.paymentMethod || "cash";
+        acc[method] = (acc[method] || 0) + 1;
+        return acc;
+      }, {}),
+      byChannel: {
+        online: orders.filter((order) => order.customerId).length,
+        offline: orders.filter((order) => !order.customerId).length,
+      },
+      avgOrderValue:
+        orders.length > 0
+          ? orders.reduce((sum, order) => sum + order.total, 0) / orders.length
+          : 0,
+      dailyBreakdown: {},
+    };
+
+    // Calculate daily breakdown
+    orders.forEach((order) => {
+      const date = order.createdAt.toISOString().split("T")[0];
+      if (!summary.dailyBreakdown[date]) {
+        summary.dailyBreakdown[date] = {
+          date,
+          orders: 0,
+          revenue: 0,
+          items: 0,
+        };
+      }
+      summary.dailyBreakdown[date].orders += 1;
+      summary.dailyBreakdown[date].revenue += order.total;
+      summary.dailyBreakdown[date].items += order.items.reduce(
+        (sum, item) => sum + item.qty,
+        0
+      );
+    });
+
+    // Convert to array
+    summary.dailyBreakdown = Object.values(summary.dailyBreakdown).sort(
+      (a, b) => a.date.localeCompare(b.date)
+    );
+
+    res.json(summary);
+  } catch (error) {
+    console.error("Failed to fetch range summary", error);
+    res.status(500).json({ message: "Failed to fetch range summary" });
+  }
+});
+
+// ==================== ANALYTICS ENDPOINTS ====================
+
+// GET payment method statistics
 router.get("/analytics/payment-methods", async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
@@ -454,28 +1435,37 @@ router.get("/analytics/payment-methods", async (req, res) => {
     const orders = await prisma.order.findMany({
       where,
       select: {
+        id: true,
         paymentMethod: true,
         total: true,
         customerId: true,
+        status: true,
         createdAt: true,
       },
     });
 
+    // Filter only completed orders
+    const completedOrders = orders.filter(
+      (order) => order.status === ORDER_STATUSES.COMPLETED
+    );
+
     // Calculate payment method statistics
     const paymentStats = {
-      cash: { count: 0, amount: 0, orders: [] },
-      upi: { count: 0, amount: 0, orders: [] },
-      card: { count: 0, amount: 0, orders: [] },
-      other: { count: 0, amount: 0, orders: [] },
+      cash: { count: 0, amount: 0, orders: [], refunds: 0 },
+      upi: { count: 0, amount: 0, orders: [], refunds: 0 },
+      card: { count: 0, amount: 0, orders: [], refunds: 0 },
+      wallet: { count: 0, amount: 0, orders: [], refunds: 0 },
+      qr: { count: 0, amount: 0, orders: [], refunds: 0 },
+      other: { count: 0, amount: 0, orders: [], refunds: 0 },
     };
 
     // Calculate channel statistics
     const channelStats = {
-      online: { count: 0, amount: 0 },
-      offline: { count: 0, amount: 0 },
+      online: { count: 0, amount: 0, refunds: 0 },
+      offline: { count: 0, amount: 0, refunds: 0 },
     };
 
-    orders.forEach((order) => {
+    completedOrders.forEach((order) => {
       const paymentMethod = order.paymentMethod?.toLowerCase() || "cash";
       const channel = order.customerId ? "online" : "offline";
 
@@ -495,9 +1485,25 @@ router.get("/analytics/payment-methods", async (req, res) => {
       channelStats[channel].amount += order.total || 0;
     });
 
+    // Calculate refund stats
+    const refundedOrders = orders.filter(
+      (order) => order.status === ORDER_STATUSES.REFUNDED
+    );
+
+    refundedOrders.forEach((order) => {
+      const paymentMethod = order.paymentMethod?.toLowerCase() || "cash";
+      const channel = order.customerId ? "online" : "offline";
+
+      if (paymentStats[paymentMethod]) {
+        paymentStats[paymentMethod].refunds += 1;
+      }
+
+      channelStats[channel].refunds += 1;
+    });
+
     // Calculate percentages
-    const totalOrders = orders.length;
-    const totalAmount = orders.reduce(
+    const totalOrders = completedOrders.length;
+    const totalAmount = completedOrders.reduce(
       (sum, order) => sum + (order.total || 0),
       0
     );
@@ -515,11 +1521,11 @@ router.get("/analytics/payment-methods", async (req, res) => {
           stats.count > 0
             ? Math.round((stats.amount / stats.count) * 100) / 100
             : 0,
-        recentOrders: stats.orders.slice(-5).map((order) => ({
-          id: order.id,
-          amount: order.total,
-          date: order.createdAt,
-        })),
+        refunds: stats.refunds,
+        refundRate:
+          stats.count > 0
+            ? Math.round((stats.refunds / stats.count) * 10000) / 100
+            : 0,
       })
     );
 
@@ -535,6 +1541,11 @@ router.get("/analytics/payment-methods", async (req, res) => {
         avgOrderValue:
           stats.count > 0
             ? Math.round((stats.amount / stats.count) * 100) / 100
+            : 0,
+        refunds: stats.refunds,
+        refundRate:
+          stats.count > 0
+            ? Math.round((stats.refunds / stats.count) * 10000) / 100
             : 0,
       })
     );
@@ -552,25 +1563,32 @@ router.get("/analytics/payment-methods", async (req, res) => {
       const date = order.createdAt.toISOString().split("T")[0];
       if (!dailyTrend[date]) {
         dailyTrend[date] = {
-          cash: 0,
-          upi: 0,
-          card: 0,
-          other: 0,
-          online: 0,
-          offline: 0,
+          cash: { count: 0, amount: 0 },
+          upi: { count: 0, amount: 0 },
+          card: { count: 0, amount: 0 },
+          wallet: { count: 0, amount: 0 },
+          qr: { count: 0, amount: 0 },
+          other: { count: 0, amount: 0 },
+          online: { count: 0, amount: 0 },
+          offline: { count: 0, amount: 0 },
+          total: 0,
         };
       }
 
       const paymentMethod = order.paymentMethod?.toLowerCase() || "cash";
       const channel = order.customerId ? "online" : "offline";
+      const isRefund = order.status === ORDER_STATUSES.REFUNDED;
 
-      if (dailyTrend[date][paymentMethod] !== undefined) {
-        dailyTrend[date][paymentMethod] += 1;
-      } else {
-        dailyTrend[date].other += 1;
+      if (dailyTrend[date][paymentMethod]) {
+        dailyTrend[date][paymentMethod].count += isRefund ? -1 : 1;
+        dailyTrend[date][paymentMethod].amount += isRefund
+          ? -order.total
+          : order.total;
       }
 
-      dailyTrend[date][channel] += 1;
+      dailyTrend[date][channel].count += isRefund ? -1 : 1;
+      dailyTrend[date][channel].amount += isRefund ? -order.total : order.total;
+      dailyTrend[date].total += isRefund ? -order.total : order.total;
     });
 
     res.json({
@@ -580,6 +1598,11 @@ router.get("/analytics/payment-methods", async (req, res) => {
         avgOrderValue:
           totalOrders > 0
             ? Math.round((totalAmount / totalOrders) * 100) / 100
+            : 0,
+        totalRefunds: refundedOrders.length,
+        refundRate:
+          totalOrders > 0
+            ? Math.round((refundedOrders.length / totalOrders) * 10000) / 100
             : 0,
         dateRange: {
           start: startDate || "all",
@@ -592,6 +1615,22 @@ router.get("/analytics/payment-methods", async (req, res) => {
         .map(([date, stats]) => ({
           date,
           ...stats,
+          paymentMethods: {
+            cash: stats.cash.count,
+            upi: stats.upi.count,
+            card: stats.card.count,
+            wallet: stats.wallet.count,
+            qr: stats.qr.count,
+            other: stats.other.count,
+          },
+          paymentAmounts: {
+            cash: Math.round(stats.cash.amount * 100) / 100,
+            upi: Math.round(stats.upi.amount * 100) / 100,
+            card: Math.round(stats.card.amount * 100) / 100,
+            wallet: Math.round(stats.wallet.amount * 100) / 100,
+            qr: Math.round(stats.qr.amount * 100) / 100,
+            other: Math.round(stats.other.amount * 100) / 100,
+          },
         }))
         .sort((a, b) => a.date.localeCompare(b.date)),
       insights: {
@@ -605,6 +1644,12 @@ router.get("/analytics/payment-methods", async (req, res) => {
           paymentSummary.find((p) => p.method === "cash")?.percentage > 50,
         onlinePenetration:
           channelSummary.find((c) => c.channel === "online")?.percentage || 0,
+        digitalPayments: paymentSummary
+          .filter((p) => ["upi", "card", "wallet", "qr"].includes(p.method))
+          .reduce((sum, p) => sum + p.percentage, 0),
+        highestRefundRate: paymentSummary.sort(
+          (a, b) => b.refundRate - a.refundRate
+        )[0],
       },
     });
   } catch (error) {
@@ -613,7 +1658,7 @@ router.get("/analytics/payment-methods", async (req, res) => {
   }
 });
 
-// New endpoint: Get channel performance
+// GET channel performance
 router.get("/analytics/channels", async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
@@ -638,7 +1683,12 @@ router.get("/analytics/channels", async (req, res) => {
         items: {
           include: {
             product: {
-              select: { name: true, category: true },
+              select: {
+                name: true,
+                category: true,
+                price: true,
+                costPrice: true,
+              },
             },
           },
         },
@@ -652,17 +1702,29 @@ router.get("/analytics/channels", async (req, res) => {
 
     // Calculate metrics for each channel
     const calculateMetrics = (channelOrders, channelName) => {
-      const totalAmount = channelOrders.reduce(
+      const completedOrders = channelOrders.filter(
+        (order) => order.status === ORDER_STATUSES.COMPLETED
+      );
+      const refundedOrders = channelOrders.filter(
+        (order) => order.status === ORDER_STATUSES.REFUNDED
+      );
+
+      const totalAmount = completedOrders.reduce(
         (sum, order) => sum + (order.total || 0),
         0
       );
-      const orderCount = channelOrders.length;
+      const refundAmount = Math.abs(
+        refundedOrders.reduce((sum, order) => sum + (order.total || 0), 0)
+      );
+      const netAmount = totalAmount - refundAmount;
+      const orderCount = completedOrders.length;
+      const refundCount = refundedOrders.length;
 
       // Time analysis
       const hourlyBreakdown = Array(24).fill(0);
       const weeklyBreakdown = Array(7).fill(0);
 
-      channelOrders.forEach((order) => {
+      completedOrders.forEach((order) => {
         const hour = new Date(order.createdAt).getHours();
         const day = new Date(order.createdAt).getDay();
         hourlyBreakdown[hour] += 1;
@@ -671,34 +1733,76 @@ router.get("/analytics/channels", async (req, res) => {
 
       // Product analysis
       const productSales = {};
-      channelOrders.forEach((order) => {
+      let totalCost = 0;
+
+      completedOrders.forEach((order) => {
         order.items.forEach((item) => {
           const productName = item.product?.name || "Unknown";
-          productSales[productName] =
-            (productSales[productName] || 0) + (item.qty || 0);
+          const quantity = item.qty || 0;
+          const revenue = (item.price || 0) * quantity;
+          const cost = (item.product?.costPrice || item.price * 0.6) * quantity;
+
+          totalCost += cost;
+
+          if (!productSales[productName]) {
+            productSales[productName] = {
+              quantity: 0,
+              revenue: 0,
+              cost: 0,
+            };
+          }
+
+          productSales[productName].quantity += quantity;
+          productSales[productName].revenue += revenue;
+          productSales[productName].cost += cost;
         });
       });
 
       const topProducts = Object.entries(productSales)
-        .map(([name, quantity]) => ({ name, quantity }))
-        .sort((a, b) => b.quantity - a.quantity)
-        .slice(0, 5);
+        .map(([name, data]) => ({
+          name,
+          quantity: data.quantity,
+          revenue: Math.round(data.revenue * 100) / 100,
+          cost: Math.round(data.cost * 100) / 100,
+          profit: Math.round((data.revenue - data.cost) * 100) / 100,
+          margin:
+            data.revenue > 0
+              ? Math.round(((data.revenue - data.cost) / data.revenue) * 10000) /
+                100
+              : 0,
+        }))
+        .sort((a, b) => b.revenue - a.revenue)
+        .slice(0, 10);
 
       // Payment method analysis for this channel
       const paymentMethods = {};
-      channelOrders.forEach((order) => {
+      completedOrders.forEach((order) => {
         const method = order.paymentMethod?.toLowerCase() || "cash";
         paymentMethods[method] = (paymentMethods[method] || 0) + 1;
       });
+
+      // Profit calculation
+      const grossProfit = netAmount - totalCost;
+      const profitMargin = netAmount > 0 ? (grossProfit / netAmount) * 100 : 0;
 
       return {
         channel: channelName,
         metrics: {
           totalOrders: orderCount,
+          refundedOrders: refundCount,
           totalAmount: Math.round(totalAmount * 100) / 100,
+          refundAmount: Math.round(refundAmount * 100) / 100,
+          netAmount: Math.round(netAmount * 100) / 100,
+          totalCost: Math.round(totalCost * 100) / 100,
+          grossProfit: Math.round(grossProfit * 100) / 100,
+          profitMargin: Math.round(profitMargin * 100) / 100,
           avgOrderValue:
             orderCount > 0
-              ? Math.round((totalAmount / orderCount) * 100) / 100
+              ? Math.round((netAmount / orderCount) * 100) / 100
+              : 0,
+          refundRate:
+            orderCount > 0
+              ? Math.round((refundCount / orderCount) * 10000) / 100
               : 0,
           peakHour: hourlyBreakdown.indexOf(Math.max(...hourlyBreakdown)),
           peakDay: [
@@ -711,8 +1815,14 @@ router.get("/analytics/channels", async (req, res) => {
             "Saturday",
           ][weeklyBreakdown.indexOf(Math.max(...weeklyBreakdown))],
         },
-        hourlyBreakdown,
-        weeklyBreakdown,
+        hourlyBreakdown: hourlyBreakdown.map((count, hour) => ({
+          hour: `${hour.toString().padStart(2, "0")}:00`,
+          orders: count,
+        })),
+        weeklyBreakdown: weeklyBreakdown.map((count, day) => ({
+          day: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][day],
+          orders: count,
+        })),
         topProducts,
         paymentMethods: Object.entries(paymentMethods).map(
           ([method, count]) => ({
@@ -731,26 +1841,31 @@ router.get("/analytics/channels", async (req, res) => {
     const offlineMetrics = calculateMetrics(offlineOrders, "offline");
 
     // Calculate comparison metrics
-    const totalOrders = orders.length;
-    const totalAmount = orders.reduce(
-      (sum, order) => sum + (order.total || 0),
-      0
-    );
+    const totalOrders = orders.filter(
+      (order) => order.status === ORDER_STATUSES.COMPLETED
+    ).length;
+    const totalAmount = orders
+      .filter((order) => order.status === ORDER_STATUSES.COMPLETED)
+      .reduce((sum, order) => sum + (order.total || 0), 0);
 
     const comparison = {
       orderShare: {
-        online: Math.round((onlineOrders.length / totalOrders) * 10000) / 100,
-        offline: Math.round((offlineOrders.length / totalOrders) * 10000) / 100,
-      },
-      revenueShare: {
         online:
           Math.round(
-            (onlineMetrics.metrics.totalAmount / totalAmount) * 10000
+            (onlineMetrics.metrics.totalOrders / totalOrders) * 10000
           ) / 100,
         offline:
           Math.round(
-            (offlineMetrics.metrics.totalAmount / totalAmount) * 10000
+            (offlineMetrics.metrics.totalOrders / totalOrders) * 10000
           ) / 100,
+      },
+      revenueShare: {
+        online:
+          Math.round((onlineMetrics.metrics.netAmount / totalAmount) * 10000) /
+          100,
+        offline:
+          Math.round((offlineMetrics.metrics.netAmount / totalAmount) * 10000) /
+          100,
       },
       avgOrderValueComparison: {
         online: onlineMetrics.metrics.avgOrderValue,
@@ -759,6 +1874,26 @@ router.get("/analytics/channels", async (req, res) => {
           Math.round(
             (onlineMetrics.metrics.avgOrderValue -
               offlineMetrics.metrics.avgOrderValue) *
+              100
+          ) / 100,
+      },
+      profitComparison: {
+        online: onlineMetrics.metrics.profitMargin,
+        offline: offlineMetrics.metrics.profitMargin,
+        difference:
+          Math.round(
+            (onlineMetrics.metrics.profitMargin -
+              offlineMetrics.metrics.profitMargin) *
+              100
+          ) / 100,
+      },
+      refundRateComparison: {
+        online: onlineMetrics.metrics.refundRate,
+        offline: offlineMetrics.metrics.refundRate,
+        difference:
+          Math.round(
+            (onlineMetrics.metrics.refundRate -
+              offlineMetrics.metrics.refundRate) *
               100
           ) / 100,
       },
@@ -802,6 +1937,8 @@ function generateRecommendations(online, offline, comparison) {
       suggestion:
         "Increase online presence through digital marketing and promotions",
       priority: "high",
+      expectedImpact: "Increase online revenue share by 15-20%",
+      timeline: "30 days",
     });
   }
 
@@ -811,6 +1948,8 @@ function generateRecommendations(online, offline, comparison) {
       channel: "offline",
       suggestion: "Enhance in-store experience and implement loyalty programs",
       priority: "high",
+      expectedImpact: "Increase offline revenue share by 10-15%",
+      timeline: "30 days",
     });
   }
 
@@ -821,6 +1960,8 @@ function generateRecommendations(online, offline, comparison) {
       channel: "offline",
       suggestion: `Introduce bundle deals to increase offline average order value (currently ₹${offline.metrics.avgOrderValue})`,
       priority: "medium",
+      expectedImpact: "Increase offline AOV by 10-15%",
+      timeline: "14 days",
     });
   } else if (comparison.avgOrderValueComparison.difference < -20) {
     recommendations.push({
@@ -828,6 +1969,52 @@ function generateRecommendations(online, offline, comparison) {
       channel: "online",
       suggestion: `Add premium products or minimum order discounts to increase online average order value (currently ₹${online.metrics.avgOrderValue})`,
       priority: "medium",
+      expectedImpact: "Increase online AOV by 10-15%",
+      timeline: "14 days",
+    });
+  }
+
+  // Profit margin recommendations
+  if (comparison.profitComparison.difference > 10) {
+    recommendations.push({
+      type: "profit_optimization",
+      channel: "online",
+      suggestion:
+        "Optimize online pricing strategy and reduce operational costs",
+      priority: "medium",
+      expectedImpact: "Improve online profit margin by 5-8%",
+      timeline: "45 days",
+    });
+  } else if (comparison.profitComparison.difference < -10) {
+    recommendations.push({
+      type: "profit_optimization",
+      channel: "offline",
+      suggestion:
+        "Reduce overhead costs and optimize inventory for offline sales",
+      priority: "medium",
+      expectedImpact: "Improve offline profit margin by 5-8%",
+      timeline: "45 days",
+    });
+  }
+
+  // Refund rate recommendations
+  if (comparison.refundRateComparison.difference > 5) {
+    recommendations.push({
+      type: "quality_improvement",
+      channel: "online",
+      suggestion: "Improve product descriptions, images, and quality control",
+      priority: "high",
+      expectedImpact: "Reduce online refund rate by 30-40%",
+      timeline: "30 days",
+    });
+  } else if (comparison.refundRateComparison.difference < -5) {
+    recommendations.push({
+      type: "quality_improvement",
+      channel: "offline",
+      suggestion: "Enhance staff training and customer service",
+      priority: "high",
+      expectedImpact: "Reduce offline refund rate by 30-40%",
+      timeline: "30 days",
     });
   }
 
@@ -838,6 +2025,8 @@ function generateRecommendations(online, offline, comparison) {
       channels: "both",
       suggestion: `Align promotions: Online peaks at ${online.metrics.peakHour}:00, Offline at ${offline.metrics.peakHour}:00`,
       priority: "low",
+      expectedImpact: "Increase cross-channel sales by 8-12%",
+      timeline: "7 days",
     });
   }
 
@@ -851,6 +2040,8 @@ function generateRecommendations(online, offline, comparison) {
       channels: "both",
       suggestion: `Cross-promote top products: Feature "${onlineTop}" offline and "${offlineTop}" online`,
       priority: "medium",
+      expectedImpact: "Increase product visibility and sales by 15-20%",
+      timeline: "14 days",
     });
   }
 

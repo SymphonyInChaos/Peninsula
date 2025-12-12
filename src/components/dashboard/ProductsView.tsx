@@ -209,7 +209,7 @@ const ProductsView = () => {
                         {product.category}
                       </td>
                       <td className="py-4 px-6">{product.stock}</td>
-                      <td className="py-4 px-6">${product.price.toFixed(2)}</td>
+                      <td className="py-4 px-6">₹{product.price.toFixed(2)}</td>
                       <td className="py-4 px-6">
                         <span
                           className={`inline-flex px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(
