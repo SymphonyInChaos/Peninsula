@@ -279,7 +279,7 @@ export const api = {
       paymentReference?: string;
       notes?: string;
     }) => {
-      const cashierId = data.cashierId || generateRandomId();
+      const cashierId = data.cashierId || "system";
 
       const result = await apiCall(`${API_BASE_URL}/api/orders`, {
         method: "POST",

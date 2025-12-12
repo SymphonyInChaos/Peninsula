@@ -18,6 +18,7 @@ const orderIncludes = {
       product: true,
     },
   },
+  payments: true,
 };
 
 // Parse items
@@ -150,26 +151,25 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-// POST create order
+// POST create order - ORDER SHOULD BE PENDING INITIALLY
 router.post("/", async (req, res) => {
   try {
     const {
       customerId = null,
       items,
       paymentMethod = "cash",
-      status = ORDER_STATUSES.PENDING,
+      status = ORDER_STATUSES.PENDING, // Default to PENDING
       paymentReference = null,
       cashierId = null,
       notes,
     } = req.body;
 
-    // Validate status
-    if (!Object.values(ORDER_STATUSES).includes(status)) {
-      return res.status(400).json({
-        message: `Invalid status. Valid statuses: ${Object.values(
-          ORDER_STATUSES
-        ).join(", ")}`,
-      });
+    // IMPORTANT: Always set status to PENDING for new orders
+    const finalStatus = ORDER_STATUSES.PENDING;
+
+    // Validate status (should be PENDING for new orders)
+    if (status !== ORDER_STATUSES.PENDING) {
+      console.warn(`Order creation: Status forced to PENDING. Received: ${status}`);
     }
 
     const normalizedItems = parseItems(items);
@@ -198,7 +198,7 @@ router.post("/", async (req, res) => {
       customerId,
       items: normalizedItems,
       paymentMethod: normalizedPaymentMethod,
-      status,
+      status: finalStatus, // Use finalStatus (PENDING)
       paymentReference,
       cashierId,
     });
@@ -215,14 +215,23 @@ router.post("/", async (req, res) => {
     }
 
     // Check cashier if provided
-    if (cashierId) {
+    let finalCashierId = cashierId;
+    if (finalCashierId) {
       const cashierExists = await prisma.user.findUnique({
-        where: { id: cashierId },
+        where: { id: finalCashierId },
       });
 
       if (!cashierExists) {
-        return res.status(400).json({ message: "Cashier not found" });
+        // If cashier is "system", allow it (system user)
+        if (finalCashierId === "system") {
+          console.log("✅ Using system cashier");
+        } else {
+          return res.status(400).json({ message: "Cashier not found" });
+        }
       }
+    } else {
+      // If no cashierId provided or it's empty/null, set to null
+      finalCashierId = null;
     }
 
     const productIds = [
@@ -239,31 +248,8 @@ router.post("/", async (req, res) => {
         .json({ message: "One or more products are invalid" });
     }
 
-    // Check stock availability (only for non-cancelled/refunded orders)
-    const stockIssues = [];
-    if (
-      status !== ORDER_STATUSES.CANCELLED &&
-      status !== ORDER_STATUSES.REFUNDED
-    ) {
-      for (const item of normalizedItems) {
-        const product = products.find((p) => p.id === item.productId);
-        if (product && product.stock < item.qty) {
-          stockIssues.push({
-            product: product.name,
-            requested: item.qty,
-            available: product.stock,
-          });
-        }
-      }
-    }
-
-    if (stockIssues.length > 0) {
-      return res.status(400).json({
-        message: "Insufficient stock for some products",
-        stockIssues,
-      });
-    }
-
+    // For PENDING orders, don't check stock availability yet
+    // Stock will be checked when order is confirmed/completed
     const priceMap = new Map(
       products.map((product) => [product.id, product.price])
     );
@@ -273,60 +259,24 @@ router.post("/", async (req, res) => {
       0
     );
 
-    const id = await generateNextId("o", "order");
-
+    // Generate ID within transaction to ensure consistency
     const order = await prisma.$transaction(async (tx) => {
-      // Update product stocks (only for non-cancelled/refunded orders)
-      if (
-        status !== ORDER_STATUSES.CANCELLED &&
-        status !== ORDER_STATUSES.REFUNDED
-      ) {
-        for (const item of normalizedItems) {
-          const product = products.find((p) => p.id === item.productId);
-          await tx.product.update({
-            where: { id: item.productId },
-            data: {
-              stock: {
-                decrement: item.qty,
-              },
-            },
-          });
-
-          // Create stock movement record
-          await tx.stockMovement.create({
-            data: {
-              productId: item.productId,
-              type: "sale",
-              quantity: item.qty,
-              oldStock: product.stock,
-              newStock: product.stock - item.qty,
-              reason: `Order ${id}`,
-            },
-          });
-        }
-      }
-
-      // Create payment record
-      if (total > 0) {
-        await tx.payment.create({
-          data: {
-            orderId: id,
-            method: normalizedPaymentMethod,
-            amount: total,
-            reference: paymentReference,
-          },
-        });
-      }
-
-      return tx.order.create({
+      // Generate ID
+      const orderId = await generateNextId("o", "order");
+      
+      // DON'T update product stocks for PENDING orders
+      // Stocks will be updated when order is confirmed/completed
+      
+      // Create the order with PENDING status
+      const newOrder = await tx.order.create({
         data: {
-          id,
+          id: orderId,
           customerId: customerId || null,
           total,
           paymentMethod: normalizedPaymentMethod,
-          status,
+          status: finalStatus, // PENDING
           paymentReference: paymentReference || null,
-          cashierId: cashierId || null,
+          cashierId: finalCashierId || null,
           items: {
             create: normalizedItems.map((item) => ({
               qty: item.qty,
@@ -339,6 +289,33 @@ router.post("/", async (req, res) => {
         },
         include: orderIncludes,
       });
+
+      // Create payment record with 'pending' status (NOT completed)
+      if (total > 0) {
+        console.log(`Creating PENDING payment for orderId: ${newOrder.id}`);
+        
+        try {
+          await tx.payment.create({
+            data: {
+              orderId: newOrder.id,
+              method: normalizedPaymentMethod,
+              amount: total,
+              reference: paymentReference,
+              status: 'pending', // Payment is pending initially
+              processedAt: null // Not processed yet
+            },
+          });
+          console.log(`✅ PENDING payment created for order ${newOrder.id}`);
+        } catch (paymentError) {
+          console.error(`❌ Failed to create payment for order ${newOrder.id}:`, paymentError);
+          throw paymentError;
+        }
+      }
+
+      return newOrder;
+    }, {
+      maxWait: 5000,
+      timeout: 10000,
     });
 
     // Create audit log
@@ -348,7 +325,7 @@ router.post("/", async (req, res) => {
         entity: "Order",
         entityId: order.id,
         newValues: order,
-        userId: cashierId || "system",
+        userId: finalCashierId || "system",
         userRole: "SYSTEM",
       },
     });
@@ -363,7 +340,145 @@ router.post("/", async (req, res) => {
     }
 
     console.error("Failed to create order", error);
-    res.status(500).json({ message: "Failed to create order" });
+    
+    if (error.code === 'P2003') {
+      console.error('Foreign key constraint failed:', error.meta);
+      return res.status(500).json({ 
+        message: "Failed to create order - constraint violation",
+        details: error.meta,
+        suggestion: "Check if payment table has correct foreign key relationship"
+      });
+    }
+    
+    res.status(500).json({ 
+      message: "Failed to create order", 
+      error: error.message,
+      code: error.code 
+    });
+  }
+});
+
+// ADD THIS ENDPOINT: Confirm/Pay for an order
+router.post("/:id/confirm", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { paymentStatus = "completed" } = req.body;
+
+    // Get current order
+    const existingOrder = await prisma.order.findUnique({
+      where: { id },
+      include: {
+        items: {
+          include: {
+            product: true,
+          },
+        },
+        payments: true,
+      },
+    });
+
+    if (!existingOrder) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    // Check if order is already completed
+    if (existingOrder.status === ORDER_STATUSES.COMPLETED) {
+      return res.status(400).json({ message: "Order is already completed" });
+    }
+
+    // Check stock availability before confirming
+    const stockIssues = [];
+    for (const item of existingOrder.items) {
+      const product = item.product;
+      if (product && product.stock < item.qty) {
+        stockIssues.push({
+          product: product.name,
+          requested: item.qty,
+          available: product.stock,
+        });
+      }
+    }
+
+    if (stockIssues.length > 0) {
+      return res.status(400).json({
+        message: "Cannot confirm order: Insufficient stock",
+        stockIssues,
+      });
+    }
+
+    const order = await prisma.$transaction(async (tx) => {
+      // Update product stocks
+      for (const item of existingOrder.items) {
+        const product = item.product;
+        const oldStock = product.stock;
+        
+        await tx.product.update({
+          where: { id: item.productId },
+          data: {
+            stock: {
+              decrement: item.qty,
+            },
+          },
+        });
+
+        // Create stock movement record
+        await tx.stockMovement.create({
+          data: {
+            productId: item.productId,
+            type: "sale",
+            quantity: item.qty,
+            oldStock,
+            newStock: oldStock - item.qty,
+            reason: `Order ${id} confirmed`,
+          },
+        });
+      }
+
+      // Update order status to COMPLETED
+      const updatedOrder = await tx.order.update({
+        where: { id },
+        data: {
+          status: ORDER_STATUSES.COMPLETED,
+        },
+        include: orderIncludes,
+      });
+
+      // Update payment status
+      const payment = existingOrder.payments[0];
+      if (payment) {
+        await tx.payment.update({
+          where: { id: payment.id },
+          data: {
+            status: paymentStatus,
+            processedAt: new Date(),
+          },
+        });
+      }
+
+      return updatedOrder;
+    });
+
+    // Create audit log
+    await prisma.auditLog.create({
+      data: {
+        action: "CONFIRM",
+        entity: "Order",
+        entityId: id,
+        oldValues: { status: existingOrder.status },
+        newValues: { status: ORDER_STATUSES.COMPLETED },
+        userId: req.user?.id || "system",
+        userRole: req.user?.role || "SYSTEM",
+        reason: "Order confirmed and paid",
+      },
+    });
+
+    res.json({
+      message: "Order confirmed successfully",
+      order,
+    });
+  } catch (error) {
+    console.error("Failed to confirm order", error);
+    res.status(500).json({ message: "Failed to confirm order" });
   }
 });
 
@@ -391,6 +506,7 @@ router.patch("/:id/status", async (req, res) => {
             product: true,
           },
         },
+        payments: true,
       },
     });
 
@@ -399,19 +515,25 @@ router.patch("/:id/status", async (req, res) => {
     }
 
     // ALLOW ANY STATUS TRANSITION
-    // No validation - allow any status change
-
     const order = await prisma.$transaction(async (tx) => {
       // Handle stock adjustments based on status changes
-      if (
-        (existingOrder.status === ORDER_STATUSES.CANCELLED ||
-          existingOrder.status === ORDER_STATUSES.REFUNDED) &&
-        status !== ORDER_STATUSES.CANCELLED &&
-        status !== ORDER_STATUSES.REFUNDED
-      ) {
-        // Restoring from cancelled/refunded - decrement stock
+      
+      // If moving to COMPLETED from PENDING
+      if (status === ORDER_STATUSES.COMPLETED && 
+          existingOrder.status === ORDER_STATUSES.PENDING) {
+        // Check stock availability
         for (const item of existingOrder.items) {
-          const oldStock = item.product.stock;
+          const product = item.product;
+          if (product && product.stock < item.qty) {
+            throw new Error(`Insufficient stock for ${product.name}`);
+          }
+        }
+        
+        // Deduct stock
+        for (const item of existingOrder.items) {
+          const product = item.product;
+          const oldStock = product.stock;
+          
           await tx.product.update({
             where: { id: item.productId },
             data: {
@@ -424,23 +546,39 @@ router.patch("/:id/status", async (req, res) => {
           await tx.stockMovement.create({
             data: {
               productId: item.productId,
-              type: "adjustment",
+              type: "sale",
               quantity: item.qty,
               oldStock,
               newStock: oldStock - item.qty,
-              reason: `Order ${id} status changed from ${existingOrder.status} to ${status}`,
+              reason: `Order ${id} completed`,
             },
           });
         }
-      } else if (
+        
+        // Update payment status to completed
+        const payment = existingOrder.payments[0];
+        if (payment) {
+          await tx.payment.update({
+            where: { id: payment.id },
+            data: {
+              status: 'completed',
+              processedAt: new Date(),
+            },
+          });
+        }
+      }
+      
+      // If moving from COMPLETED to CANCELLED/REFUNDED
+      else if (
         (status === ORDER_STATUSES.CANCELLED ||
-          status === ORDER_STATUSES.REFUNDED) &&
-        existingOrder.status !== ORDER_STATUSES.CANCELLED &&
-        existingOrder.status !== ORDER_STATUSES.REFUNDED
+         status === ORDER_STATUSES.REFUNDED) &&
+        existingOrder.status === ORDER_STATUSES.COMPLETED
       ) {
-        // Moving to cancelled/refunded - restore stock
+        // Restore stock
         for (const item of existingOrder.items) {
-          const oldStock = item.product.stock;
+          const product = item.product;
+          const oldStock = product.stock;
+          
           await tx.product.update({
             where: { id: item.productId },
             data: {
@@ -453,14 +591,22 @@ router.patch("/:id/status", async (req, res) => {
           await tx.stockMovement.create({
             data: {
               productId: item.productId,
-              type:
-                status === ORDER_STATUSES.REFUNDED ? "refund" : "adjustment",
+              type: status === ORDER_STATUSES.REFUNDED ? "refund" : "adjustment",
               quantity: item.qty,
               oldStock,
               newStock: oldStock + item.qty,
-              reason: `Order ${id} ${status}: ${
-                reason || "No reason provided"
-              }`,
+              reason: `Order ${id} ${status}: ${reason || "No reason provided"}`,
+            },
+          });
+        }
+
+        // Update payment status to refunded
+        const payment = existingOrder.payments[0];
+        if (payment) {
+          await tx.payment.update({
+            where: { id: payment.id },
+            data: {
+              status: 'refunded',
             },
           });
         }
@@ -472,6 +618,24 @@ router.patch("/:id/status", async (req, res) => {
               orderId: id,
               amount: existingOrder.total,
               reason: reason || "No reason provided",
+            },
+          });
+        }
+      }
+      
+      // If moving from PENDING to CANCELLED - no stock changes needed
+      else if (
+        (status === ORDER_STATUSES.CANCELLED ||
+         status === ORDER_STATUSES.REFUNDED) &&
+        existingOrder.status === ORDER_STATUSES.PENDING
+      ) {
+        // Update payment status
+        const payment = existingOrder.payments[0];
+        if (payment) {
+          await tx.payment.update({
+            where: { id: payment.id },
+            data: {
+              status: 'cancelled',
             },
           });
         }
@@ -502,6 +666,13 @@ router.patch("/:id/status", async (req, res) => {
     res.json(order);
   } catch (error) {
     console.error("Failed to update order status", error);
+    
+    if (error.message.startsWith("Insufficient stock")) {
+      return res.status(400).json({
+        message: error.message,
+      });
+    }
+    
     res.status(500).json({ message: "Failed to update order status" });
   }
 });
@@ -566,6 +737,7 @@ router.put("/:id", async (req, res) => {
               product: true,
             },
           },
+          payments: true,
         },
       });
 
@@ -575,19 +747,26 @@ router.put("/:id", async (req, res) => {
 
       let updateData = {};
 
-      // Handle status update - NO VALIDATION, ALLOW ANY
+      // Handle status update
       if (status !== undefined) {
-        // ALLOW ANY STATUS TRANSITION
         // Handle stock adjustments for status changes
-        if (
-          (existing.status === ORDER_STATUSES.CANCELLED ||
-            existing.status === ORDER_STATUSES.REFUNDED) &&
-          status !== ORDER_STATUSES.CANCELLED &&
-          status !== ORDER_STATUSES.REFUNDED
-        ) {
-          // Restoring from cancelled/refunded - decrement stock
+        
+        // If moving to COMPLETED from PENDING
+        if (status === ORDER_STATUSES.COMPLETED && 
+            existing.status === ORDER_STATUSES.PENDING) {
+          // Check stock availability
           for (const item of existing.items) {
-            const oldStock = item.product.stock;
+            const product = item.product;
+            if (product && product.stock < item.qty) {
+              throw new Error(`Insufficient stock for ${product.name}`);
+            }
+          }
+          
+          // Deduct stock
+          for (const item of existing.items) {
+            const product = item.product;
+            const oldStock = product.stock;
+            
             await tx.product.update({
               where: { id: item.productId },
               data: {
@@ -600,23 +779,39 @@ router.put("/:id", async (req, res) => {
             await tx.stockMovement.create({
               data: {
                 productId: item.productId,
-                type: "adjustment",
+                type: "sale",
                 quantity: item.qty,
                 oldStock,
                 newStock: oldStock - item.qty,
-                reason: `Order ${existing.id} status changed from ${existing.status} to ${status}`,
+                reason: `Order ${existing.id} completed via update`,
               },
             });
           }
-        } else if (
+          
+          // Update payment status
+          const payment = existing.payments[0];
+          if (payment) {
+            await tx.payment.update({
+              where: { id: payment.id },
+              data: {
+                status: 'completed',
+                processedAt: new Date(),
+              },
+            });
+          }
+        }
+        
+        // If moving from COMPLETED to CANCELLED/REFUNDED
+        else if (
           (status === ORDER_STATUSES.CANCELLED ||
-            status === ORDER_STATUSES.REFUNDED) &&
-          existing.status !== ORDER_STATUSES.CANCELLED &&
-          existing.status !== ORDER_STATUSES.REFUNDED
+           status === ORDER_STATUSES.REFUNDED) &&
+          existing.status === ORDER_STATUSES.COMPLETED
         ) {
-          // Moving to cancelled/refunded - restore stock
+          // Restore stock
           for (const item of existing.items) {
-            const oldStock = item.product.stock;
+            const product = item.product;
+            const oldStock = product.stock;
+            
             await tx.product.update({
               where: { id: item.productId },
               data: {
@@ -629,12 +824,51 @@ router.put("/:id", async (req, res) => {
             await tx.stockMovement.create({
               data: {
                 productId: item.productId,
-                type:
-                  status === ORDER_STATUSES.REFUNDED ? "refund" : "adjustment",
+                type: status === ORDER_STATUSES.REFUNDED ? "refund" : "adjustment",
                 quantity: item.qty,
                 oldStock,
                 newStock: oldStock + item.qty,
-                reason: `Order ${existing.id} ${status}`,
+                reason: `Order ${existing.id} ${status} via update`,
+              },
+            });
+          }
+
+          // Update payment status
+          const payment = existing.payments[0];
+          if (payment) {
+            await tx.payment.update({
+              where: { id: payment.id },
+              data: {
+                status: 'refunded',
+              },
+            });
+          }
+
+          // Create refund record if status is refunded
+          if (status === ORDER_STATUSES.REFUNDED) {
+            await tx.refund.create({
+              data: {
+                orderId: existing.id,
+                amount: existing.total,
+                reason: "Order updated to refunded",
+              },
+            });
+          }
+        }
+        
+        // If moving from PENDING to CANCELLED
+        else if (
+          (status === ORDER_STATUSES.CANCELLED ||
+           status === ORDER_STATUSES.REFUNDED) &&
+          existing.status === ORDER_STATUSES.PENDING
+        ) {
+          // Update payment status
+          const payment = existing.payments[0];
+          if (payment) {
+            await tx.payment.update({
+              where: { id: payment.id },
+              data: {
+                status: 'cancelled',
               },
             });
           }
@@ -691,29 +925,32 @@ router.put("/:id", async (req, res) => {
           throw new Error("INVALID_PRODUCTS");
         }
 
-        // Check stock availability (considering current order items)
-        const currentProductQtys = new Map();
-        for (const item of existing.items) {
-          currentProductQtys.set(item.productId, item.qty);
-        }
-
-        const stockIssues = [];
-        for (const item of normalizedItems) {
-          const product = products.find((p) => p.id === item.productId);
-          const currentQty = currentProductQtys.get(item.productId) || 0;
-          const stockChange = item.qty - currentQty;
-
-          if (stockChange > 0 && product && product.stock < stockChange) {
-            stockIssues.push({
-              product: product.name,
-              requestedChange: stockChange,
-              available: product.stock,
-            });
+        // For PENDING orders, don't check stock
+        // For COMPLETED orders, check stock availability
+        if (existing.status === ORDER_STATUSES.COMPLETED) {
+          const currentProductQtys = new Map();
+          for (const item of existing.items) {
+            currentProductQtys.set(item.productId, item.qty);
           }
-        }
 
-        if (stockIssues.length > 0) {
-          throw new Error("INSUFFICIENT_STOCK");
+          const stockIssues = [];
+          for (const item of normalizedItems) {
+            const product = products.find((p) => p.id === item.productId);
+            const currentQty = currentProductQtys.get(item.productId) || 0;
+            const stockChange = item.qty - currentQty;
+
+            if (stockChange > 0 && product && product.stock < stockChange) {
+              stockIssues.push({
+                product: product.name,
+                requestedChange: stockChange,
+                available: product.stock,
+              });
+            }
+          }
+
+          if (stockIssues.length > 0) {
+            throw new Error("INSUFFICIENT_STOCK");
+          }
         }
 
         const priceMap = new Map(
@@ -725,34 +962,36 @@ router.put("/:id", async (req, res) => {
           0
         );
 
-        // Update product stocks and create stock movements
-        for (const item of normalizedItems) {
-          const currentQty = currentProductQtys.get(item.productId) || 0;
-          const stockChange = item.qty - currentQty;
+        // Only update product stocks if order is COMPLETED
+        if (existing.status === ORDER_STATUSES.COMPLETED) {
+          for (const item of normalizedItems) {
+            const currentQty = currentProductQtys.get(item.productId) || 0;
+            const stockChange = item.qty - currentQty;
 
-          if (stockChange !== 0) {
-            const product = products.find((p) => p.id === item.productId);
-            const oldStock = product.stock;
+            if (stockChange !== 0) {
+              const product = products.find((p) => p.id === item.productId);
+              const oldStock = product.stock;
 
-            await tx.product.update({
-              where: { id: item.productId },
-              data: {
-                stock: {
-                  decrement: stockChange,
+              await tx.product.update({
+                where: { id: item.productId },
+                data: {
+                  stock: {
+                    decrement: stockChange,
+                  },
                 },
-              },
-            });
+              });
 
-            await tx.stockMovement.create({
-              data: {
-                productId: item.productId,
-                type: stockChange > 0 ? "sale" : "adjustment",
-                quantity: Math.abs(stockChange),
-                oldStock,
-                newStock: oldStock - stockChange,
-                reason: `Order ${existing.id} item quantity update`,
-              },
-            });
+              await tx.stockMovement.create({
+                data: {
+                  productId: item.productId,
+                  type: stockChange > 0 ? "sale" : "adjustment",
+                  quantity: Math.abs(stockChange),
+                  oldStock,
+                  newStock: oldStock - stockChange,
+                  reason: `Order ${existing.id} item quantity update`,
+                },
+              });
+            }
           }
         }
 
@@ -821,10 +1060,14 @@ router.put("/:id", async (req, res) => {
         .json({ message: "Insufficient stock for updated quantities" });
     }
 
-    // REMOVED INVALID_STATUS_TRANSITION error - allow any transition
-
     if (error.message === "CASHIER_NOT_FOUND") {
       return res.status(400).json({ message: "Cashier not found" });
+    }
+
+    if (error.message.startsWith("Insufficient stock")) {
+      return res.status(400).json({
+        message: error.message,
+      });
     }
 
     console.error("Failed to update order", error);
@@ -851,30 +1094,32 @@ router.delete("/:id", async (req, res) => {
       return res.status(404).json({ message: "Order not found" });
     }
 
-    // Restore product stock and delete order
+    // Only restore stock if order was COMPLETED
     await prisma.$transaction(async (tx) => {
-      // Restore product stock
-      for (const item of order.items) {
-        const oldStock = item.product.stock;
-        await tx.product.update({
-          where: { id: item.productId },
-          data: {
-            stock: {
-              increment: item.qty,
+      if (order.status === ORDER_STATUSES.COMPLETED) {
+        // Restore product stock
+        for (const item of order.items) {
+          const oldStock = item.product.stock;
+          await tx.product.update({
+            where: { id: item.productId },
+            data: {
+              stock: {
+                increment: item.qty,
+              },
             },
-          },
-        });
+          });
 
-        await tx.stockMovement.create({
-          data: {
-            productId: item.productId,
-            type: "adjustment",
-            quantity: item.qty,
-            oldStock,
-            newStock: oldStock + item.qty,
-            reason: `Order ${order.id} deleted`,
-          },
-        });
+          await tx.stockMovement.create({
+            data: {
+              productId: item.productId,
+              type: "adjustment",
+              quantity: item.qty,
+              oldStock,
+              newStock: oldStock + item.qty,
+              reason: `Order ${order.id} deleted`,
+            },
+          });
+        }
       }
 
       // Delete related records
@@ -1522,9 +1767,8 @@ router.get("/analytics/channels", async (req, res) => {
           profit: Math.round((data.revenue - data.cost) * 100) / 100,
           margin:
             data.revenue > 0
-              ? Math.round(
-                  ((data.revenue - data.cost) / data.revenue) * 10000
-                ) / 100
+              ? Math.round(((data.revenue - data.cost) / data.revenue) * 10000) /
+                100
               : 0,
         }))
         .sort((a, b) => b.revenue - a.revenue)

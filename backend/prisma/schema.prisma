@@ -124,14 +124,15 @@ model StockMovement {
   @@map("stock_movements")
 }
 model Payment {
-  id        String   @id @default(cuid())
-  orderId   String
-  method    String   // "cash" | "upi" | "card" | "wallet"
-  amount    Float
-  reference String?
-  createdAt DateTime @default(now())
-
-  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  id          String   @id @default(cuid())
+  orderId     String
+  method      String   // "cash" | "upi" | "card" | "wallet"
+  amount      Float
+  reference   String?
+  status      String   @default("pending")  // Payment status: pending, completed, refunded, cancelled
+  processedAt DateTime?
+  createdAt   DateTime @default(now())
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   @@index([orderId])
   @@map("payments")
