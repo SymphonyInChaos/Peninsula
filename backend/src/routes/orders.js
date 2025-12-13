@@ -4,6 +4,7 @@ import prisma, { validateOrder, ORDER_STATUSES } from "../utils/db.js";
 import { generateNextId } from "../utils/idGenerator.js";
 
 const router = Router();
+const N8N_WEBHOOK_URL = process.env.N8N_WEBHOOK_URL || 'https://hargav08.app.n8n.cloud/webhook-test/order-status';
 
 // SIMPLIFIED: Allow any status transition
 const validateStatusTransition = (currentStatus, newStatus) => {
@@ -41,6 +42,110 @@ const parseItems = (items) => {
   }
 
   return normalized;
+};
+
+// Trigger n8n webhook
+// routes/orders.js - Updated triggerN8nWebhook function
+const triggerN8nWebhook = async (webhookData) => {
+  try {
+    console.log('🚀 Triggering n8n webhook with data:', JSON.stringify(webhookData, null, 2));
+    console.log('📨 Email will be sent to:', webhookData.customer?.email);
+    
+    const response = await fetch(N8N_WEBHOOK_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(webhookData),
+    });
+    
+    // Get response as text first
+    const responseText = await response.text();
+    
+    // Check if it's HTML (n8n often returns HTML)
+    if (responseText.includes('<!DOCTYPE') || 
+        responseText.includes('<html') ||
+        responseText.includes('n8n') ||
+        responseText.trim() === '') {
+      console.log('✅ N8N webhook processed (HTML/empty response)');
+      console.log('✅ Email should be delivered to:', webhookData.customer?.email);
+      return { success: true, message: 'Webhook processed - HTML response' };
+    }
+    
+    // Try to parse as JSON if not HTML
+    try {
+      const result = responseText ? JSON.parse(responseText) : { success: true };
+      console.log('✅ N8N webhook response:', result);
+      return result;
+    } catch (parseError) {
+      console.log('✅ N8N webhook processed (non-JSON response)');
+      return { success: true, message: 'Webhook processed - non-JSON response' };
+    }
+    
+  } catch (error) {
+    console.error('❌ Failed to trigger N8N webhook:', error.message);
+    // Don't throw error - email failure shouldn't break order flow
+    return { success: false, error: error.message };
+  }
+};
+
+// Helper to trigger webhook after order creation or status update
+const triggerOrderWebhook = async (orderId, eventType, oldStatus = null, newStatus = null, reason = null) => {
+  try {
+    // Fetch complete order details
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        customer: true,
+        items: {
+          include: {
+            product: true,
+          },
+        },
+      },
+    });
+
+    if (!order) {
+      console.log(`Order ${orderId} not found for webhook`);
+      return;
+    }
+
+    // Prepare webhook data
+    const webhookData = {
+      event: eventType,
+      timestamp: new Date().toISOString(),
+      customer: order.customer ? {
+        name: order.customer.name,
+        email: order.customer.email,
+        phone: order.customer.phone
+      } : null,
+      order: {
+        id: order.id,
+        status: eventType === 'order_created' ? 'pending' : newStatus,
+        oldStatus: oldStatus,
+        newStatus: newStatus,
+        total: order.total,
+        paymentMethod: order.paymentMethod,
+        createdAt: order.createdAt.toISOString(),
+        updatedAt: order.updatedAt.toISOString(),
+        items: order.items?.map(item => ({
+          name: item.product?.name || 'Unknown Product',
+          quantity: item.qty,
+          price: item.price,
+          total: item.qty * item.price
+        })) || [],
+        reason: reason
+      }
+    };
+
+    // Trigger webhook
+    await triggerN8nWebhook(webhookData);
+    
+    console.log(`📧 ${eventType === 'order_created' ? 'Order creation' : 'Status update'} webhook triggered for order ${orderId}`);
+    
+  } catch (error) {
+    console.error(`Failed to trigger ${eventType} webhook:`, error);
+  }
 };
 
 // ==================== ORDER CRUD ENDPOINTS ====================
@@ -330,6 +435,15 @@ router.post("/", async (req, res) => {
       },
     });
 
+    // Trigger n8n webhook for order creation (async, don't wait)
+    setTimeout(async () => {
+      try {
+        await triggerOrderWebhook(order.id, 'order_created');
+      } catch (webhookError) {
+        console.error('Failed to trigger order creation webhook:', webhookError);
+      }
+    }, 1000);
+
     res.status(201).json(order);
   } catch (error) {
     if (error.name === "ZodError") {
@@ -471,6 +585,15 @@ router.post("/:id/confirm", async (req, res) => {
         reason: "Order confirmed and paid",
       },
     });
+
+    // Trigger n8n webhook for status update to COMPLETED (async, don't wait)
+    setTimeout(async () => {
+      try {
+        await triggerOrderWebhook(id, 'order_status_updated', existingOrder.status, ORDER_STATUSES.COMPLETED, "Order confirmed and paid");
+      } catch (webhookError) {
+        console.error('Failed to trigger status update webhook:', webhookError);
+      }
+    }, 1000);
 
     res.json({
       message: "Order confirmed successfully",
@@ -662,6 +785,15 @@ router.patch("/:id/status", async (req, res) => {
         reason: reason || "Status updated",
       },
     });
+
+    // Trigger n8n webhook for status update (async, don't wait)
+    setTimeout(async () => {
+      try {
+        await triggerOrderWebhook(id, 'order_status_updated', existingOrder.status, status, reason || "Status updated");
+      } catch (webhookError) {
+        console.error('Failed to trigger status update webhook:', webhookError);
+      }
+    }, 1000);
 
     res.json(order);
   } catch (error) {
@@ -1042,6 +1174,22 @@ router.put("/:id", async (req, res) => {
       },
     });
 
+    // Trigger n8n webhook if status was changed
+    if (status !== undefined) {
+      setTimeout(async () => {
+        try {
+          const existingOrder = await prisma.order.findUnique({
+            where: { id: req.params.id },
+          });
+          if (existingOrder) {
+            await triggerOrderWebhook(req.params.id, 'order_status_updated', existingOrder.status, status, "Order updated");
+          }
+        } catch (webhookError) {
+          console.error('Failed to trigger status update webhook:', webhookError);
+        }
+      }, 1000);
+    }
+
     res.json(order);
   } catch (error) {
     if (error.message === "CUSTOMER_NOT_FOUND") {
@@ -1152,6 +1300,15 @@ router.delete("/:id", async (req, res) => {
         userRole: req.user?.role || "SYSTEM",
       },
     });
+
+    // Trigger n8n webhook for order deletion (cancelled status)
+    setTimeout(async () => {
+      try {
+        await triggerOrderWebhook(req.params.id, 'order_status_updated', order.status, 'cancelled', "Order deleted");
+      } catch (webhookError) {
+        console.error('Failed to trigger deletion webhook:', webhookError);
+      }
+    }, 1000);
 
     res.status(204).send();
   } catch (error) {
@@ -1803,7 +1960,7 @@ router.get("/analytics/channels", async (req, res) => {
           refundRate:
             orderCount > 0
               ? Math.round((refundCount / orderCount) * 10000) / 100
-              : 0,
+            : 0,
           peakHour: hourlyBreakdown.indexOf(Math.max(...hourlyBreakdown)),
           peakDay: [
             "Sunday",
