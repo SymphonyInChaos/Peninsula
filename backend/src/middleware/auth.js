@@ -70,55 +70,103 @@ export const authenticate = async (req, res, next) => {
 };
 
 // UPDATED: Make authorize case-insensitive
-export const authorize = (...roles) => {
+export const authorize = (allowedRoles) => {
   return (req, res, next) => {
     if (!req.user) {
-      return next(new AuthError());
+      return next(new AuthError("Authentication required", 401));
     }
 
-    // Convert both user role and required roles to lowercase for comparison
-    const userRoleLower = req.user.role.toLowerCase();
-    const requiredRolesLower = roles.map((role) => role.toLowerCase());
-
-    if (!requiredRolesLower.includes(userRoleLower)) {
-      return next(
-        new PermissionError(
-          `Required roles: ${roles.join(", ")}. Your role: ${req.user.role}`
-        )
-      );
+    // Check if user has any of the allowed roles
+    // Handle both single role string and array of roles
+    const userRoles = Array.isArray(req.user.roles) 
+      ? req.user.roles 
+      : [req.user.role || req.user.roles];
+    
+    // Convert to lowercase for comparison
+    const normalizedUserRoles = userRoles.map(role => 
+      typeof role === 'string' ? role.toLowerCase() : String(role).toLowerCase()
+    );
+    
+    const normalizedAllowedRoles = allowedRoles.map(role => role.toLowerCase());
+    
+    const hasPermission = normalizedUserRoles.some(role => 
+      normalizedAllowedRoles.includes(role)
+    );
+    
+    if (!hasPermission) {
+      return next(new AuthError("Insufficient permissions", 403));
     }
-
+    
+    console.log(`✅ Authorized: User has required role(s): ${allowedRoles.join(', ')}`);
     next();
   };
 };
 
-// UPDATED: Make permissions case-insensitive
+// UPDATED: Make permissions case-insensitive and handle roles array
 export const permissions = {
   canManageProducts: (user) => {
-    const role = user?.role?.toLowerCase();
-    return ["admin", "manager"].includes(role);
+    if (!user) return false;
+    const userRoles = Array.isArray(user.roles) ? user.roles : [user.role || user.roles];
+    const normalizedRoles = userRoles.map(role => role.toLowerCase());
+    return normalizedRoles.some(role => ["admin", "manager"].includes(role));
   },
+  
   canManageCustomers: (user) => {
-    const role = user?.role?.toLowerCase();
-    return ["admin", "manager"].includes(role);
+    if (!user) return false;
+    const userRoles = Array.isArray(user.roles) ? user.roles : [user.role || user.roles];
+    const normalizedRoles = userRoles.map(role => role.toLowerCase());
+    return normalizedRoles.some(role => ["admin", "manager"].includes(role));
   },
+  
   canManageOrders: (user) => {
-    const role = user?.role?.toLowerCase();
-    return ["admin", "manager", "staff"].includes(role);
+    if (!user) return false;
+    const userRoles = Array.isArray(user.roles) ? user.roles : [user.role || user.roles];
+    const normalizedRoles = userRoles.map(role => role.toLowerCase());
+    return normalizedRoles.some(role => ["admin", "manager", "staff"].includes(role));
   },
+  
   canDeleteRecords: (user) => {
-    const role = user?.role?.toLowerCase();
-    return ["admin", "manager"].includes(role);
+    if (!user) return false;
+    const userRoles = Array.isArray(user.roles) ? user.roles : [user.role || user.roles];
+    const normalizedRoles = userRoles.map(role => role.toLowerCase());
+    return normalizedRoles.some(role => ["admin", "manager"].includes(role));
   },
+  
   canViewAuditLogs: (user) => {
-    const role = user?.role?.toLowerCase();
-    return ["admin"].includes(role);
+    if (!user) return false;
+    const userRoles = Array.isArray(user.roles) ? user.roles : [user.role || user.roles];
+    const normalizedRoles = userRoles.map(role => role.toLowerCase());
+    return normalizedRoles.some(role => ["admin"].includes(role));
   },
+  
   canManageUsers: (user) => {
-    const role = user?.role?.toLowerCase();
-    return ["admin"].includes(role);
+    if (!user) return false;
+    const userRoles = Array.isArray(user.roles) ? user.roles : [user.role || user.roles];
+    const normalizedRoles = userRoles.map(role => role.toLowerCase());
+    return normalizedRoles.some(role => ["admin"].includes(role));
+  },
+  
+  hasRole: (user, requiredRole) => {
+    if (!user) return false;
+    const userRoles = Array.isArray(user.roles) ? user.roles : [user.role || user.roles];
+    const normalizedRoles = userRoles.map(role => role.toLowerCase());
+    return normalizedRoles.includes(requiredRole.toLowerCase());
+  },
+  
+  hasAnyRole: (user, requiredRoles) => {
+    if (!user) return false;
+    const userRoles = Array.isArray(user.roles) ? user.roles : [user.role || user.roles];
+    const normalizedUserRoles = userRoles.map(role => role.toLowerCase());
+    const normalizedRequiredRoles = requiredRoles.map(role => role.toLowerCase());
+    return normalizedUserRoles.some(role => normalizedRequiredRoles.includes(role));
   },
 };
+
+// Role-based middleware shortcuts for common use cases
+export const requireAdmin = authorize(["admin"]);
+export const requireManager = authorize(["manager", "admin"]);
+export const requireStaff = authorize(["staff", "manager", "admin"]);
+export const requireAdminOrManager = authorize(["admin", "manager"]);
 
 // NEW: Debug utility to check user object
 export const debugUser = (req) => {
@@ -129,4 +177,40 @@ export const debugUser = (req) => {
     rawHeaders: req.headers,
     token: req.header("Authorization")?.substring(0, 30) + "...",
   };
+};
+
+// Role validation helper
+export const validateRole = (role) => {
+  const validRoles = ["admin", "manager", "staff"];
+  return validRoles.includes(role?.toLowerCase());
+};
+
+// Optional: Add this function if you want to extract user from request without middleware
+export const getUserFromToken = async (token) => {
+  try {
+    if (!token) return null;
+    
+    const cleanToken = token.replace("Bearer ", "");
+    const decoded = jwt.verify(cleanToken, JWT_SECRET);
+    
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.userId },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+      },
+    });
+    
+    if (!user) return null;
+    
+    return {
+      ...user,
+      roles: [user.role.toLowerCase()],
+    };
+  } catch (error) {
+    console.error("Error getting user from token:", error.message);
+    return null;
+  }
 };
