@@ -12,27 +12,79 @@ const generateRandomId = () => {
 };
 
 // Helper function to get auth token
-const getAuthToken = () => localStorage.getItem("token");
+const getAuthToken = () => {
+  try {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      console.warn("⚠️ No token found in localStorage");
+      return null;
+    }
+    
+    // Validate token format
+    if (typeof token !== 'string') {
+      console.error("❌ Token is not a string");
+      localStorage.removeItem("token");
+      return null;
+    }
+    
+    // Check if it looks like a JWT token
+    if (!token.includes('.') || token.split('.').length !== 3) {
+      console.error("❌ Token doesn't look like a valid JWT");
+      localStorage.removeItem("token");
+      return null;
+    }
+    
+    return token;
+  } catch (error) {
+    console.error("❌ Error getting token:", error);
+    return null;
+  }
+};
 
-// Updated apiCall function with better error handling
+// Updated apiCall function with better error handling and debugging
 const apiCall = async (url: string, options: RequestInit = {}) => {
   const token = getAuthToken();
-  const headers = {
+  
+  // Debug logging
+  console.group(`📡 API Call: ${url}`);
+  console.log(`🔐 Token available: ${!!token}`);
+  console.log(`⚙️ Method: ${options.method || 'GET'}`);
+  
+  // Create headers object properly
+  const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    ...(token && { Authorization: `Bearer ${token}` }),
-    ...options.headers,
   };
-
+  
+  // Always add Authorization if token exists
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+    console.log(`✅ Added Authorization header`);
+  } else {
+    console.warn(`⚠️ No token found for authenticated endpoint: ${url}`);
+  }
+  
+  // Merge with any headers from options
+  if (options.headers) {
+    Object.assign(headers, options.headers);
+  }
+  
   const config = {
     ...options,
     headers,
   };
 
+  console.log(`📋 Final headers:`, headers);
+  
   try {
+    console.log(`➡️ Sending request to: ${url}`);
     const response = await fetch(url, config);
+    
+    console.log(`⬅️ Response status: ${response.status} ${response.statusText}`);
+    console.log(`📦 Response headers:`, Object.fromEntries(response.headers.entries()));
 
     // Handle 204 No Content and other empty responses
     if (response.status === 204 || response.status === 205) {
+      console.groupEnd();
       return null;
     }
 
@@ -49,21 +101,42 @@ const apiCall = async (url: string, options: RequestInit = {}) => {
           data.message ||
           data.error ||
           `HTTP error! status: ${response.status}`;
+        console.error(`❌ API Error: ${errorMessage}`);
+        
+        // Auto-logout on 401 Unauthorized
+        if (response.status === 401) {
+          console.log("🔒 401 Unauthorized - Clearing token");
+          localStorage.removeItem("token");
+          // Optional: redirect to login
+          if (typeof window !== 'undefined') {
+            window.location.href = '/login';
+          }
+        }
+        
+        console.groupEnd();
         throw new Error(errorMessage);
       }
 
+      console.log(`✅ API Success: ${url}`);
+      console.log(`📊 Response data:`, data);
+      console.groupEnd();
       return data;
     }
 
     // For non-JSON responses, check status
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`❌ Non-JSON error: ${errorText}`);
+      console.groupEnd();
       throw new Error(`HTTP error! status: ${response.status}`);
     }
 
     // For empty non-JSON responses
+    console.groupEnd();
     return null;
   } catch (error: any) {
-    console.error(`API Call failed for ${url}:`, error);
+    console.error(`❌ API Call failed for ${url}:`, error);
+    console.groupEnd();
     throw error;
   }
 };
@@ -72,6 +145,7 @@ export const api = {
   // AUTHENTICATION
   auth: {
     checkSetup: async () => {
+      console.log("🔍 Checking system setup...");
       return apiCall(`${API_BASE_URL}/api/auth/check-setup`);
     },
 
@@ -80,6 +154,7 @@ export const api = {
       password: string;
       name: string;
     }) => {
+      console.log("🔧 Setting up system...");
       return apiCall(`${API_BASE_URL}/api/auth/setup`, {
         method: "POST",
         body: JSON.stringify(userData),
@@ -87,6 +162,7 @@ export const api = {
     },
 
     login: async (email: string, password: string) => {
+      console.log("🔑 Attempting login...");
       const data = await apiCall(`${API_BASE_URL}/api/auth/login`, {
         method: "POST",
         body: JSON.stringify({ email, password }),
@@ -95,6 +171,9 @@ export const api = {
       // Store token if provided
       if (data?.token) {
         localStorage.setItem("token", data.token);
+        console.log("✅ Token stored in localStorage");
+      } else {
+        console.warn("⚠️ No token in login response");
       }
 
       return data;
@@ -106,6 +185,7 @@ export const api = {
       name: string;
       role: string;
     }) => {
+      console.log("📝 Registering user...");
       return apiCall(`${API_BASE_URL}/api/auth/register`, {
         method: "POST",
         body: JSON.stringify(userData),
@@ -113,10 +193,12 @@ export const api = {
     },
 
     getMe: async () => {
+      console.log("👤 Getting current user...");
       return apiCall(`${API_BASE_URL}/api/auth/me`);
     },
 
     changePassword: async (currentPassword: string, newPassword: string) => {
+      console.log("🔐 Changing password...");
       return apiCall(`${API_BASE_URL}/api/auth/change-password`, {
         method: "PUT",
         body: JSON.stringify({ currentPassword, newPassword }),
@@ -124,6 +206,7 @@ export const api = {
     },
 
     logout: () => {
+      console.log("🚪 Logging out...");
       localStorage.removeItem("token");
     },
   },
@@ -136,6 +219,7 @@ export const api = {
       name: string;
       role: string;
     }) => {
+      console.log("👥 Creating user...");
       return apiCall(`${API_BASE_URL}/api/auth/register`, {
         method: "POST",
         body: JSON.stringify(userData),
@@ -146,16 +230,19 @@ export const api = {
   // CUSTOMERS
   customers: {
     getAll: async () => {
+      console.log("📋 Getting all customers...");
       const data = await apiCall(`${API_BASE_URL}/api/customers`);
       return data?.data || data || [];
     },
 
     getById: async (id: string) => {
+      console.log(`👤 Getting customer ${id}...`);
       const data = await apiCall(`${API_BASE_URL}/api/customers/${id}`);
       return data?.data || data;
     },
 
     create: async (data: { name: string; email?: string; phone?: string }) => {
+      console.log("➕ Creating customer...");
       const result = await apiCall(`${API_BASE_URL}/api/customers`, {
         method: "POST",
         body: JSON.stringify(data),
@@ -167,6 +254,7 @@ export const api = {
       id: string,
       data: { name?: string; email?: string; phone?: string }
     ) => {
+      console.log(`✏️ Updating customer ${id}...`);
       const result = await apiCall(`${API_BASE_URL}/api/customers/${id}`, {
         method: "PUT",
         body: JSON.stringify(data),
@@ -175,6 +263,7 @@ export const api = {
     },
 
     delete: async (id: string) => {
+      console.log(`🗑️ Deleting customer ${id}...`);
       return apiCall(`${API_BASE_URL}/api/customers/${id}`, {
         method: "DELETE",
       });
@@ -184,11 +273,13 @@ export const api = {
   // PRODUCTS
   products: {
     getAll: async () => {
+      console.log("📦 Getting all products...");
       const data = await apiCall(`${API_BASE_URL}/api/products`);
       return data?.data || data || [];
     },
 
     getById: async (id: string) => {
+      console.log(`📦 Getting product ${id}...`);
       const data = await apiCall(`${API_BASE_URL}/api/products/${id}`);
       return data?.data || data;
     },
@@ -199,6 +290,7 @@ export const api = {
       stock: number;
       description?: string;
     }) => {
+      console.log("➕ Creating product...");
       const result = await apiCall(`${API_BASE_URL}/api/products`, {
         method: "POST",
         body: JSON.stringify(data),
@@ -215,6 +307,7 @@ export const api = {
         description?: string;
       }
     ) => {
+      console.log(`✏️ Updating product ${id}...`);
       const result = await apiCall(`${API_BASE_URL}/api/products/${id}`, {
         method: "PUT",
         body: JSON.stringify(data),
@@ -223,6 +316,7 @@ export const api = {
     },
 
     delete: async (id: string) => {
+      console.log(`🗑️ Deleting product ${id}...`);
       return apiCall(`${API_BASE_URL}/api/products/${id}`, {
         method: "DELETE",
       });
@@ -241,6 +335,7 @@ export const api = {
       search?: string;
       paymentMethod?: string;
     }) => {
+      console.log("📊 Getting all orders...");
       let url = `${API_BASE_URL}/api/orders`;
       const queryParams = new URLSearchParams();
 
@@ -266,6 +361,7 @@ export const api = {
     },
 
     getById: async (id: string) => {
+      console.log(`📄 Getting order ${id}...`);
       const data = await apiCall(`${API_BASE_URL}/api/orders/${id}`);
       return data?.data || data;
     },
@@ -279,6 +375,7 @@ export const api = {
       paymentReference?: string;
       notes?: string;
     }) => {
+      console.log("➕ Creating order...");
       const cashierId = data.cashierId || "system";
 
       const result = await apiCall(`${API_BASE_URL}/api/orders`, {
@@ -308,6 +405,7 @@ export const api = {
         notes?: string;
       }
     ) => {
+      console.log(`✏️ Updating order ${id}...`);
       const result = await apiCall(`${API_BASE_URL}/api/orders/${id}`, {
         method: "PUT",
         body: JSON.stringify(data),
@@ -316,6 +414,7 @@ export const api = {
     },
 
     delete: async (id: string) => {
+      console.log(`🗑️ Deleting order ${id}...`);
       return apiCall(`${API_BASE_URL}/api/orders/${id}`, {
         method: "DELETE",
       });
@@ -323,6 +422,7 @@ export const api = {
 
     // UPDATED: Allow any status transition
     updateStatus: async (id: string, status: string, reason?: string) => {
+      console.log(`🔄 Updating order ${id} status to ${status}...`);
       const result = await apiCall(`${API_BASE_URL}/api/orders/${id}/status`, {
         method: "PATCH",
         body: JSON.stringify({ status, reason }),
@@ -339,6 +439,7 @@ export const api = {
         page?: number;
       }
     ) => {
+      console.log(`📊 Getting orders with status ${status}...`);
       let url = `${API_BASE_URL}/api/orders/status/${status}`;
       const queryParams = new URLSearchParams();
 
@@ -356,11 +457,13 @@ export const api = {
     },
 
     getTodaySummary: async () => {
+      console.log("📅 Getting today's summary...");
       const data = await apiCall(`${API_BASE_URL}/api/orders/summary/today`);
       return data?.data || data;
     },
 
     getSummaryByRange: async (startDate: string, endDate: string) => {
+      console.log(`📊 Getting summary from ${startDate} to ${endDate}...`);
       const data = await apiCall(
         `${API_BASE_URL}/api/orders/summary/range?startDate=${startDate}&endDate=${endDate}`
       );
@@ -368,6 +471,7 @@ export const api = {
     },
 
     getPaymentMethodStats: async (startDate?: string, endDate?: string) => {
+      console.log("💳 Getting payment method stats...");
       let url = `${API_BASE_URL}/api/orders/analytics/payment-methods`;
       const params = new URLSearchParams();
 
@@ -383,6 +487,7 @@ export const api = {
     },
 
     getChannelAnalytics: async (startDate?: string, endDate?: string) => {
+      console.log("📈 Getting channel analytics...");
       let url = `${API_BASE_URL}/api/orders/analytics/channels`;
       const params = new URLSearchParams();
 
@@ -401,6 +506,7 @@ export const api = {
   // REPORTS
   reports: {
     getDailySales: async (date?: string) => {
+      console.log(`📊 Getting daily sales report for ${date || 'today'}...`);
       const url = date
         ? `${API_BASE_URL}/api/reports/sales/daily?date=${date}`
         : `${API_BASE_URL}/api/reports/sales/daily`;
@@ -410,6 +516,7 @@ export const api = {
     },
 
     getPaymentAnalytics: async (startDate?: string, endDate?: string) => {
+      console.log("💰 Getting payment analytics...");
       let url = `${API_BASE_URL}/api/reports/analytics/payment`;
       const params = new URLSearchParams();
 
@@ -425,6 +532,7 @@ export const api = {
     },
 
     getChannelPerformance: async (startDate?: string, endDate?: string) => {
+      console.log("📈 Getting channel performance...");
       let url = `${API_BASE_URL}/api/reports/analytics/channels`;
       const params = new URLSearchParams();
 
@@ -440,6 +548,7 @@ export const api = {
     },
 
     getLowStock: async (threshold = 10) => {
+      console.log(`📦 Getting low stock report (threshold: ${threshold})...`);
       const data = await apiCall(
         `${API_BASE_URL}/api/reports/inventory/low-stock?threshold=${threshold}`
       );
@@ -447,6 +556,7 @@ export const api = {
     },
 
     getCustomerHistory: async (customerId?: string, limit = 50) => {
+      console.log(`👤 Getting customer history ${customerId ? 'for customer ' + customerId : 'for all customers'}...`);
       const url = customerId
         ? `${API_BASE_URL}/api/reports/customers/history?customerId=${customerId}&limit=${limit}`
         : `${API_BASE_URL}/api/reports/customers/history?limit=${limit}`;
@@ -456,6 +566,7 @@ export const api = {
     },
 
     getSalesTrend: async (period = "weekly", weeks = 8) => {
+      console.log(`📈 Getting sales trend (${period} for ${weeks} weeks)...`);
       const data = await apiCall(
         `${API_BASE_URL}/api/reports/sales/trend?period=${period}&weeks=${weeks}`
       );
@@ -463,6 +574,7 @@ export const api = {
     },
 
     getInventoryValuation: async () => {
+      console.log("📊 Getting inventory valuation...");
       const data = await apiCall(
         `${API_BASE_URL}/api/reports/inventory/valuation`
       );
@@ -470,6 +582,7 @@ export const api = {
     },
 
     getDashboard: async () => {
+      console.log("🏠 Getting dashboard data...");
       const data = await apiCall(`${API_BASE_URL}/api/reports/dashboard`);
       return data?.data || data;
     },
@@ -479,6 +592,7 @@ export const api = {
       format = "json",
       params?: { startDate?: string; endDate?: string }
     ) => {
+      console.log(`📤 Exporting ${type} report as ${format}...`);
       let url = `${API_BASE_URL}/api/reports/export/${type}?format=${format}`;
       const queryParams = new URLSearchParams();
 
@@ -497,6 +611,7 @@ export const api = {
   // STOCK MOVEMENTS
   stockMovements: {
     getAll: async (type?: string) => {
+      console.log(`📦 Getting stock movements ${type ? 'of type ' + type : ''}...`);
       const url =
         type && type !== "all"
           ? `${API_BASE_URL}/api/stock-movements?type=${type}`
@@ -507,6 +622,7 @@ export const api = {
     },
 
     getById: async (id: string) => {
+      console.log(`📦 Getting stock movement ${id}...`);
       const data = await apiCall(`${API_BASE_URL}/api/stock-movements/${id}`);
       return data?.data || data;
     },
@@ -517,6 +633,7 @@ export const api = {
       quantity: number;
       reason?: string;
     }) => {
+      console.log("➕ Creating stock movement...");
       const result = await apiCall(`${API_BASE_URL}/api/stock-movements`, {
         method: "POST",
         body: JSON.stringify(data),
@@ -525,6 +642,7 @@ export const api = {
     },
 
     getReport: async () => {
+      console.log("📊 Getting stock movement report...");
       const data = await apiCall(
         `${API_BASE_URL}/api/stock-movements/report/summary`
       );
@@ -532,6 +650,7 @@ export const api = {
     },
 
     seedSampleData: async () => {
+      console.log("🌱 Seeding sample stock data...");
       const result = await apiCall(
         `${API_BASE_URL}/api/stock-movements/seed-stock-data`,
         {
@@ -542,6 +661,7 @@ export const api = {
     },
 
     getProductHistory: async (productId: string) => {
+      console.log(`📦 Getting product history for ${productId}...`);
       const data = await apiCall(
         `${API_BASE_URL}/api/stock-movements/product/${productId}`
       );
@@ -552,6 +672,7 @@ export const api = {
   // ANALYTICS
   analytics: {
     getPaymentMethods: async (startDate?: string, endDate?: string) => {
+      console.log("💳 Getting payment methods analytics...");
       let url = `${API_BASE_URL}/api/orders/analytics/payment-methods`;
       const params = new URLSearchParams();
 
@@ -567,6 +688,7 @@ export const api = {
     },
 
     getChannels: async (startDate?: string, endDate?: string) => {
+      console.log("📈 Getting channels analytics...");
       let url = `${API_BASE_URL}/api/orders/analytics/channels`;
       const params = new URLSearchParams();
 
@@ -582,6 +704,7 @@ export const api = {
     },
 
     getPaymentAnalytics: async (startDate?: string, endDate?: string) => {
+      console.log("💰 Getting payment analytics...");
       let url = `${API_BASE_URL}/api/reports/analytics/payment`;
       const params = new URLSearchParams();
 
@@ -597,6 +720,7 @@ export const api = {
     },
 
     getChannelPerformance: async (startDate?: string, endDate?: string) => {
+      console.log("📈 Getting channel performance...");
       let url = `${API_BASE_URL}/api/reports/analytics/channels`;
       const params = new URLSearchParams();
 
@@ -612,6 +736,7 @@ export const api = {
     },
 
     getDashboard: async () => {
+      console.log("🏠 Getting analytics dashboard...");
       const data = await apiCall(`${API_BASE_URL}/api/reports/dashboard`);
       return data?.data || data;
     },
@@ -784,6 +909,60 @@ export const authDebug = {
       console.log("❌ Stock movements test failed:", error);
     }
   },
+};
+
+// NEW: Check authentication state
+export const checkAuthState = () => {
+  const token = localStorage.getItem("token");
+  console.group("🔍 Authentication State");
+  console.log("📱 LocalStorage token:", token ? "✅ Present" : "❌ Missing");
+  console.log("🏷️ Token length:", token?.length || 0);
+  
+  if (token) {
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      console.log("👤 User ID:", payload.userId);
+      console.log("🎯 Role:", payload.role);
+      console.log("⏰ Expires:", new Date(payload.exp * 1000).toLocaleString());
+      console.log("🔄 Valid:", Date.now() < payload.exp * 1000);
+    } catch (e) {
+      console.error("❌ Invalid token format");
+    }
+  }
+  console.groupEnd();
+  return !!token;
+};
+
+// NEW: Test dashboard access
+export const testDashboardAccess = async () => {
+  console.group("🧪 Testing Dashboard Access");
+  
+  // Check auth state
+  const token = getAuthToken();
+  console.log("1. Token exists:", !!token);
+  
+  // Check if token is valid
+  if (token) {
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      console.log("2. Token payload:", payload);
+      console.log("3. Token valid until:", new Date(payload.exp * 1000));
+    } catch (e) {
+      console.error("4. Invalid token");
+    }
+  }
+  
+  // Try to access dashboard
+  try {
+    console.log("5. Attempting to fetch dashboard...");
+    const result = await api.reports.getDashboard();
+    console.log("6. Dashboard fetch:", result?.success ? "✅ Success" : "❌ Failed");
+    console.log("7. Response data:", result);
+  } catch (error: any) {
+    console.error("8. Dashboard error:", error.message);
+  }
+  
+  console.groupEnd();
 };
 
 // Types for TypeScript support
@@ -976,3 +1155,18 @@ export const getUserRole = (): string | null => {
     return null;
   }
 };
+
+// NEW: Monitor localStorage changes
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (e) => {
+    if (e.key === 'token') {
+      console.log(`🔄 Token changed in localStorage: ${e.newValue ? "Set" : "Removed"}`);
+    }
+  });
+  
+  // Also monitor beforeunload to check token state
+  window.addEventListener('beforeunload', () => {
+    console.log("🔍 Checking token before page unload...");
+    checkAuthState();
+  });
+}

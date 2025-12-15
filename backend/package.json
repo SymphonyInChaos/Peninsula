@@ -7,7 +7,14 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
     "seed": "node src/seed.js",
+    "seed:today": "node src/seed.js --today",
+    "seed:clean": "node src/seed.js --clean",
+    "seed:help": "node src/seed.js --help",
+    "prisma:generate": "npx prisma generate",
+    "prisma:migrate": "npx prisma migrate dev",
+    "prisma:studio": "npx prisma studio",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -27,5 +34,8 @@
     "jsonwebtoken": "^9.0.2",
     "prisma": "^6.19.0",
     "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.9"
   }
 }
