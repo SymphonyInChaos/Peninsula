@@ -21,8 +21,8 @@ export class ReportService {
     "cancelled",
     "refunded",
   ];
-  static COMPLETED_STATUSES = ["completed"];
-  static EXCLUDED_STATUSES = ["cancelled", "refunded"];
+  static COMPLETED_STATUSES = ["completed", "processing", "pending", "confirmed"];
+  static EXCLUDED_STATUSES = ["cancelled"];
   static ORDER_STATUS_FLOW = {
     pending: ["confirmed", "cancelled"],
     confirmed: ["processing", "cancelled"],

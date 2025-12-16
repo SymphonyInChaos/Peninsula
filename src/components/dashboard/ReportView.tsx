@@ -32,6 +32,7 @@ import {
   BarChart as BarChartIcon,
   Tag,
   AlertCircle,
+  Download,
 } from "lucide-react";
 import {
   Popover,
@@ -40,12 +41,6 @@ import {
 } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { format } from "date-fns";
-import {
-  AreaChart,
-  BarChart,
-  DonutChart,
-  LineChart as TremorLineChart,
-} from "@tremor/react";
 
 // Import the centralized API utilities
 import { api, formatCurrency, formatPercentage, getPaymentMethodColor, getChannelColor } from "@/lib/api";
@@ -63,79 +58,162 @@ const formatChannel = (channel: string): string => {
   return api.payments.formatChannel(channel);
 };
 
-// Generate fallback dashboard data (simplified version)
+// Color Schemes for Charts
+const CHART_COLORS = {
+  // Revenue/Sales charts
+  revenue: ["purple", "blue"], 
+  sales: ["green", "blue", "purple"],
+  orders: ["blue", "cyan"],
+  
+  // Payment methods
+  paymentMethods: {
+    cash: "orange",
+    upi: "green",
+    card: "purple",
+    qr: "red",
+    wallet: "pink",
+    other: "gray",
+  },
+  
+  // Channels
+  channels: {
+    online: "blue",
+    offline: "orange",
+  },
+  
+  // Products
+  products: ["purple", "pink", "green", "orange", "blue", "cyan"],
+  
+  // Performance indicators
+  performance: {
+    high: "red",
+    medium: "orange",
+    low: "green",
+  },
+  
+  // Trends
+  trends: {
+    positive: "green",
+    negative: "red",
+    neutral: "gray",
+  }
+};
+
+// Calculate today's stats from payment split data
+const calculateTodayStats = (dashboardData: DashboardData) => {
+  if (!dashboardData?.analytics?.paymentSplit) {
+    return {
+      revenue: 0,
+      orders: 0,
+      avgOrder: 0,
+      totalItems: 0,
+      netRevenue: 0
+    };
+  }
+
+  // Calculate from payment split data
+  const paymentSplit = dashboardData.analytics.paymentSplit;
+  const totalRevenue = paymentSplit.reduce((sum, payment) => sum + (payment.amount || 0), 0);
+  const totalOrders = paymentSplit.reduce((sum, payment) => sum + (payment.count || 0), 0);
+  const avgOrder = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+  
+  // Estimate total items (average 2 items per order)
+  const totalItems = totalOrders * 2;
+
+  return {
+    revenue: totalRevenue,
+    orders: totalOrders,
+    avgOrder,
+    totalItems,
+    netRevenue: totalRevenue
+  };
+};
+
+// Generate fallback dashboard data with calculated stats
 const generateFallbackDashboard = (): DashboardData => {
   const fallbackData: DashboardData = {
     overview: {
       today: {
-        revenue: 483.12,
+        revenue: 383.11,
         orders: 3,
-        avgOrder: 161.04,
-        totalItems: 10,
-        netRevenue: 483.12
+        avgOrder: 127.7,
+        totalItems: 9,
+        netRevenue: 383.11
       },
       inventory: {
-        totalValue: 4204.38,
-        lowStockItems: 1,
-        outOfStock: 1,
+        totalValue: 18229.99,
+        lowStockItems: 0,
+        outOfStock: 0,
         healthyStock: 0
       },
       payment: {
-        topMethod: "upi" as PaymentMethod,
-        cashPercentage: 20,
-        upiPercentage: 40,
-        cardPercentage: 24,
+        topMethod: "card" as PaymentMethod,
+        cashPercentage: 22.58,
+        upiPercentage: 19.35,
+        cardPercentage: 29.03,
         walletPercentage: 0,
-        qrPercentage: 16,
-        digitalAdoption: 80,
+        qrPercentage: 0,
+        digitalAdoption: 77.41,
       },
       channels: {
-        onlinePercentage: 72,
-        offlinePercentage: 28,
+        onlinePercentage: 61.29,
+        offlinePercentage: 38.71,
         dominantChannel: "online" as ChannelType,
       },
     },
     analytics: {
       paymentSplit: [
         {
-          method: "cash",
-          count: 2,
-          amount: 397.32,
-          percentage: 28.57,
+          method: "card",
+          count: 1,
+          amount: 467.03,
+          percentage: 16.67,
         },
         {
           method: "upi",
           count: 2,
-          amount: 241.56,
-          percentage: 28.57,
+          amount: 230.91,
+          percentage: 33.33,
         },
         {
-          method: "card",
+          method: "cash",
           count: 2,
-          amount: 397.32,
-          percentage: 28.57,
+          amount: 115.45,
+          percentage: 33.33,
         },
         {
           method: "qr",
           count: 1,
-          amount: 142.23,
-          percentage: 14.29,
+          amount: 0,
+          percentage: 16.67,
+        },
+        {
+          method: "wallet",
+          count: 0,
+          amount: 0,
+          percentage: 0,
+        },
+        {
+          method: "other",
+          count: 0,
+          amount: 0,
+          percentage: 0,
         },
       ],
       channelSplit: [
         {
           channel: "online",
-          count: 5,
-          amount: 851.07,
-          percentage: 71.43,
-          avgOrderValue: 170.21,
+          count: 4,
+          amount: 230.91,
+          percentage: 66.67,
+          avgOrderValue: 57.73,
         },
         {
           channel: "offline",
           count: 2,
-          amount: 327.36,
-          percentage: 28.57,
-          avgOrderValue: 163.68,
+          amount: 152.2,
+          percentage: 33.33,
+          avgOrderValue: 76.1,
         },
       ],
       hourlyBreakdown: Array.from({ length: 24 }, (_, i) => ({
@@ -149,70 +227,54 @@ const generateFallbackDashboard = (): DashboardData => {
       })),
       salesTrend: [
         {
-          period: "Week 50",
-          totalSales: 3239.63,
-          orderCount: 25,
-          avgOrderValue: 129.59,
+          period: "Week 51",
+          totalSales: 3033.09,
+          orderCount: 10,
+          avgOrderValue: 303.31,
         },
         {
-          period: "Week 51",
-          totalSales: 810.48,
-          orderCount: 7,
-          avgOrderValue: 115.78,
+          period: "Week 50",
+          totalSales: 5761.75,
+          orderCount: 19,
+          avgOrderValue: 303.25,
         },
       ],
       topProducts: [
         {
-          name: "Juice",
-          quantity: 6,
-          revenue: 257.41,
+          name: "Croissant",
+          quantity: 7,
+          revenue: 1359.12,
         },
         {
-          name: "Muffin",
-          quantity: 4,
-          revenue: 225.72,
+          name: "Wrap",
+          quantity: 2,
+          revenue: 157.41,
         },
       ],
     },
     alerts: {
-      critical: [
+      critical: [],
+      stockAlerts: [],
+      performanceAlerts: [
         {
-          name: "Muffin",
-          stock: 0,
-          urgency: "critical",
-          suggestedReorderQty: 50,
-        },
-      ],
-      stockAlerts: [
-        {
-          type: "critical",
-          message: "1 items are out of stock",
-          items: ["Muffin"],
-          priority: "high"
+          type: "warning",
+          message: "High refund rate: 100.0%",
+          priority: "medium"
         }
       ],
-      performanceAlerts: [],
       todayPerformance: "needs_attention",
     },
     insights: {
-      recommendations: [
-        {
-          type: "inventory",
-          priority: "high",
-          action: "Reorder 1 critical items immediately",
-          expectedImpact: "Prevent lost sales",
-          timeline: "immediate",
-        },
-      ],
+      recommendations: [],
       opportunities: [],
       trends: {
         paymentTrend: {
-          cash: { trend: 0, direction: "stable" as const },
-          upi: { trend: 33.33, direction: "increasing" as const },
+          cash: { trend: 25, direction: "increasing" as const },
+          upi: { trend: 0, direction: "stable" as const },
           card: { trend: 0, direction: "stable" as const },
-          qr: { trend: 33.33, direction: "increasing" as const },
+          qr: { trend: 50, direction: "increasing" as const },
         },
-        channelTrend: { onlineGrowth: 25, offlineGrowth: 5 },
+        channelTrend: { onlineGrowth: 0, offlineGrowth: 0 },
       },
     },
   };
@@ -237,6 +299,10 @@ export default function ReportView() {
   // Debug effect
   useEffect(() => {
     console.log("Dashboard data:", dashboardData);
+    console.log("Today's stats:", dashboardData.overview.today);
+    console.log("Payment split:", dashboardData.analytics.paymentSplit);
+    console.log("Sales trend data:", dashboardData.analytics.salesTrend);
+    console.log("Top products:", dashboardData.analytics.topProducts);
     console.log("Is demo mode:", isDemoMode);
     console.log("Has token:", !!localStorage.getItem("token"));
   }, [dashboardData, isDemoMode]);
@@ -274,7 +340,7 @@ export default function ReportView() {
           console.log("[ReportView] API data received:", data);
           
           // Transform the API data to match our DashboardData interface
-          const transformedData: DashboardData = {
+          let transformedData: DashboardData = {
             overview: {
               today: {
                 revenue: data.overview?.today?.revenue || 0,
@@ -290,7 +356,7 @@ export default function ReportView() {
                 healthyStock: data.overview?.inventory?.healthyStock || 0,
               },
               payment: {
-                topMethod: (data.overview?.payment?.topMethod as PaymentMethod) || "upi",
+                topMethod: (data.overview?.payment?.topMethod as PaymentMethod) || "card",
                 cashPercentage: data.overview?.payment?.cashPercentage || 0,
                 upiPercentage: data.overview?.payment?.upiPercentage || 0,
                 cardPercentage: data.overview?.payment?.cardPercentage || 0,
@@ -309,7 +375,8 @@ export default function ReportView() {
                 method: item.method,
                 count: item.count || 0,
                 amount: item.amount || 0,
-                percentage: item.percentage || 0,
+                // Use amountPercentage if percentage is not available
+                percentage: item.percentage || Math.abs(item.amountPercentage) || 0,
               })) || [],
               channelSplit: data.analytics?.channelSplit?.map((item: any) => ({
                 channel: item.channel,
@@ -327,12 +394,25 @@ export default function ReportView() {
                 dominantPaymentMethod: item.dominantPaymentMethod || "cash",
                 onlinePercentage: item.onlinePercentage || 0,
               })) || [],
-              salesTrend: data.analytics?.salesTrend?.map((item: any, index: number) => ({
-                period: item.period || `Week ${index + 1}`,
-                totalSales: item.totalSales || 0,
-                orderCount: item.orders || 0,
-                avgOrderValue: item.avgOrderValue || 0,
-              })) || [],
+              salesTrend: data.analytics?.salesTrend?.map((item: any, index: number) => {
+                // Debug each sales trend item
+                console.log(`Processing sales trend item ${index}:`, item);
+                
+                // Extract week number from "2025-W51" format
+                let period = item.period || `Week ${index + 1}`;
+                const weekMatch = period.match(/W(\d+)$/);
+                if (weekMatch) {
+                  period = `Week ${weekMatch[1]}`;
+                }
+                
+                return {
+                  period: period,
+                  // Use netSales as totalSales if available
+                  totalSales: item.netSales || item.totalSales || 0,
+                  orderCount: item.orders || item.orderCount || 0,
+                  avgOrderValue: item.avgOrderValue || 0,
+                };
+              }) || [],
               topProducts: data.analytics?.topProducts?.map((item: any) => ({
                 name: item.name || "Unknown Product",
                 quantity: item.quantity || 0,
@@ -365,6 +445,29 @@ export default function ReportView() {
             },
           };
           
+          console.log("Transformed sales trend:", transformedData.analytics.salesTrend);
+          console.log("Transformed top products:", transformedData.analytics.topProducts);
+          console.log("Transformed payment split:", transformedData.analytics.paymentSplit);
+          
+          // FIX: Calculate today's stats from payment split if they're 0
+          if (transformedData.overview.today.orders === 0 && transformedData.analytics.paymentSplit.length > 0) {
+            console.log("Calculating today's stats from payment split...");
+            const calculatedStats = calculateTodayStats(transformedData);
+            transformedData = {
+              ...transformedData,
+              overview: {
+                ...transformedData.overview,
+                today: calculatedStats
+              }
+            };
+            
+            // Also update payment overview if needed
+            if (!transformedData.overview.payment.topMethod && transformedData.analytics.paymentSplit.length > 0) {
+              const topMethod = transformedData.analytics.paymentSplit.sort((a: any, b: any) => b.amount - a.amount)[0]?.method || "cash";
+              transformedData.overview.payment.topMethod = topMethod as PaymentMethod;
+            }
+          }
+          
           setDashboardData(transformedData);
           setIsDemoMode(false);
         } else {
@@ -388,7 +491,7 @@ export default function ReportView() {
             console.log("[ReportView] Fallback data received:", data);
             
             // Transform the data
-            const transformedData: DashboardData = {
+            let transformedData: DashboardData = {
               overview: {
                 today: {
                   revenue: data.overview?.today?.revenue || 0,
@@ -404,7 +507,7 @@ export default function ReportView() {
                   healthyStock: data.overview?.inventory?.healthyStock || 0,
                 },
                 payment: {
-                  topMethod: (data.overview?.payment?.topMethod as PaymentMethod) || "upi",
+                  topMethod: (data.overview?.payment?.topMethod as PaymentMethod) || "card",
                   cashPercentage: data.overview?.payment?.cashPercentage || 0,
                   upiPercentage: data.overview?.payment?.upiPercentage || 0,
                   cardPercentage: data.overview?.payment?.cardPercentage || 0,
@@ -419,11 +522,39 @@ export default function ReportView() {
                 },
               },
               analytics: {
-                paymentSplit: data.analytics?.paymentSplit || [],
-                channelSplit: data.analytics?.channelSplit || [],
+                paymentSplit: data.analytics?.paymentSplit?.map((item: any) => ({
+                  method: item.method,
+                  count: item.count || 0,
+                  amount: item.amount || 0,
+                  percentage: item.percentage || Math.abs(item.amountPercentage) || 0,
+                })) || [],
+                channelSplit: data.analytics?.channelSplit?.map((item: any) => ({
+                  channel: item.channel,
+                  count: item.count || 0,
+                  amount: item.amount || 0,
+                  percentage: item.percentage || 0,
+                  avgOrderValue: item.avgOrderValue || 0,
+                })) || [],
                 hourlyBreakdown: data.analytics?.hourlyBreakdown || [],
-                salesTrend: data.analytics?.salesTrend || [],
-                topProducts: data.analytics?.topProducts || [],
+                salesTrend: data.analytics?.salesTrend?.map((item: any, index: number) => {
+                  let period = item.period || `Week ${index + 1}`;
+                  const weekMatch = period.match(/W(\d+)$/);
+                  if (weekMatch) {
+                    period = `Week ${weekMatch[1]}`;
+                  }
+                  
+                  return {
+                    period: period,
+                    totalSales: item.netSales || item.totalSales || 0,
+                    orderCount: item.orders || item.orderCount || 0,
+                    avgOrderValue: item.avgOrderValue || 0,
+                  };
+                }) || [],
+                topProducts: data.analytics?.topProducts?.map((item: any) => ({
+                  name: item.name || "Unknown Product",
+                  quantity: item.quantity || 0,
+                  revenue: item.revenue || 0,
+                })) || [],
               },
               alerts: {
                 critical: data.alerts?.critical || [],
@@ -435,11 +566,30 @@ export default function ReportView() {
                 recommendations: data.insights?.recommendations || [],
                 opportunities: data.insights?.opportunities || [],
                 trends: {
-                  paymentTrend: data.insights?.trends?.paymentTrend || {},
+                  paymentTrend: data.insights?.trends?.paymentTrend || {
+                    cash: { trend: 0, direction: "stable" },
+                    upi: { trend: 0, direction: "stable" },
+                    card: { trend: 0, direction: "stable" },
+                    qr: { trend: 0, direction: "stable" },
+                  },
                   channelTrend: data.insights?.trends?.channelTrend || { onlineGrowth: 0, offlineGrowth: 0 },
                 },
               },
             };
+            
+            console.log("Fallback transformed data:", transformedData);
+            
+            // Calculate today's stats from payment split if needed
+            if (transformedData.overview.today.orders === 0 && transformedData.analytics.paymentSplit.length > 0) {
+              const calculatedStats = calculateTodayStats(transformedData);
+              transformedData = {
+                ...transformedData,
+                overview: {
+                  ...transformedData.overview,
+                  today: calculatedStats
+                }
+              };
+            }
             
             setDashboardData(transformedData);
             setIsDemoMode(false);
@@ -577,22 +727,25 @@ export default function ReportView() {
     }
   };
 
+  // Calculate stats with fallback to payment split data
+  const todayStats = calculateTodayStats(dashboardData);
+  
   const stats = [
     {
       title: "Today's Revenue",
-      value: formatCurrency(dashboardData?.overview?.today?.revenue || 0),
-      change: dashboardData?.overview?.today?.revenue > 500 ? "+12.5%" : "-5.2%",
-      trend: dashboardData?.overview?.today?.revenue > 500 ? "up" : "down",
+      value: formatCurrency(todayStats.revenue),
+      change: todayStats.revenue > 500 ? "+12.5%" : "-5.2%",
+      trend: todayStats.revenue > 500 ? "up" : "down",
       icon: DollarSign,
-      gradient: "from-emerald-500 to-teal-600",
-      iconBg: "bg-emerald-500/10",
-      iconColor: "text-emerald-600",
+      gradient: "from-purple-500 to-pink-600",
+      iconBg: "bg-purple-500/10",
+      iconColor: "text-purple-600",
     },
     {
       title: "Orders Today",
-      value: dashboardData?.overview?.today?.orders || 0,
-      change: dashboardData?.overview?.today?.orders > 2 ? "+8.2%" : "-15.3%",
-      trend: dashboardData?.overview?.today?.orders > 2 ? "up" : "down",
+      value: todayStats.orders,
+      change: todayStats.orders > 2 ? "+8.2%" : "-15.3%",
+      trend: todayStats.orders > 2 ? "up" : "down",
       icon: ShoppingCart,
       gradient: "from-blue-500 to-cyan-600",
       iconBg: "bg-blue-500/10",
@@ -606,9 +759,9 @@ export default function ReportView() {
       change: dashboardData?.overview?.inventory?.totalValue > 4000 ? "+2.4%" : "-10.8%",
       trend: dashboardData?.overview?.inventory?.totalValue > 4000 ? "up" : "down",
       icon: Package,
-      gradient: "from-purple-500 to-pink-600",
-      iconBg: "bg-purple-500/10",
-      iconColor: "text-purple-600",
+      gradient: "from-emerald-500 to-teal-600",
+      iconBg: "bg-emerald-500/10",
+      iconColor: "text-emerald-600",
     },
     {
       title: "Low Stock Items",
@@ -632,13 +785,11 @@ export default function ReportView() {
     {
       title: "Top Payment Method",
       value: formatPaymentMethod(
-        dashboardData?.overview?.payment?.topMethod || "cash"
+        dashboardData?.overview?.payment?.topMethod || "card"
       ),
       icon: CreditCard,
-      color: getPaymentMethodColor(
-        (dashboardData?.overview?.payment?.topMethod as PaymentMethod) || "cash"
-      ),
-      percentage: dashboardData?.overview?.payment?.upiPercentage || 0,
+      color: CHART_COLORS.paymentMethods.card,
+      percentage: dashboardData?.overview?.payment?.cardPercentage || 0,
     },
     {
       title: "Digital Adoption",
@@ -646,7 +797,7 @@ export default function ReportView() {
         dashboardData?.overview?.payment?.digitalAdoption || 0
       ),
       icon: CreditCard,
-      color: "#3b82f6",
+      color: CHART_COLORS.sales[1], // Blue
       percentage: dashboardData?.overview?.payment?.digitalAdoption || 0,
     },
     {
@@ -655,18 +806,16 @@ export default function ReportView() {
         dashboardData?.overview?.channels?.onlinePercentage || 0
       ),
       icon: Globe,
-      color: getChannelColor("online" as ChannelType),
+      color: CHART_COLORS.channels.online,
       percentage: dashboardData?.overview?.channels?.onlinePercentage || 0,
     },
     {
       title: "Dominant Channel",
       value: formatChannel(
-        dashboardData?.overview?.channels?.dominantChannel || "offline"
+        dashboardData?.overview?.channels?.dominantChannel || "online"
       ),
       icon: Globe,
-      color: getChannelColor(
-        (dashboardData?.overview?.channels?.dominantChannel as ChannelType) || "offline"
-      ),
+      color: CHART_COLORS.channels.online,
       percentage:
         dashboardData?.overview?.channels?.dominantChannel === "online"
           ? dashboardData?.overview?.channels?.onlinePercentage || 0
@@ -674,78 +823,32 @@ export default function ReportView() {
     },
   ];
 
-  const hourlySalesData = (dashboardData?.analytics?.hourlyBreakdown || []).map(
-    (item: any) => ({
-      Hour: item.hour,
-      Sales: item.sales || 0,
-      Orders: item.orders || 0,
-      NetSales: item.netSales || 0,
-    })
-  );
-
-  const weeklyTrendData = (dashboardData?.analytics?.salesTrend || []).map(
-    (item: any) => ({
-      Week: item.period || "Week 1",
-      Revenue: item.totalSales || 0,
-      Orders: item.orderCount || 0,
-      "Avg Order": item.avgOrderValue || 0,
-    })
-  );
-
-  const topProductsData = (dashboardData?.analytics?.topProducts || []).map(
-    (item: any) => ({
-      name: item.name || "Product",
-      sales: item.quantity || 0,
-      revenue: item.revenue || 0,
-    })
-  );
-
-  const paymentSplitData = (dashboardData?.analytics?.paymentSplit || []).map(
-    (item: any) => ({
-      name: formatPaymentMethod(item.method),
-      value: item.percentage || 0,
-      count: item.count || 0,
-      amount: item.amount || 0,
-      color: getPaymentMethodColor(item.method as PaymentMethod),
-    })
-  );
-
-  const channelSplitData = (dashboardData?.analytics?.channelSplit || []).map(
-    (item: any) => ({
-      name: formatChannel(item.channel),
-      value: item.percentage || 0,
-      count: item.count || 0,
-      amount: item.amount || 0,
-      color: getChannelColor(item.channel as ChannelType),
-    })
-  );
-
   // Performance indicators
   const performanceIndicators = [
     {
       title: "Average Order Value",
-      value: formatCurrency(dashboardData?.overview?.today?.avgOrder || 0),
+      value: formatCurrency(todayStats.avgOrder),
       icon: DollarSign,
-      color: "text-green-600",
-      bgColor: "bg-green-100",
+      color: "text-purple-600",
+      bgColor: "bg-purple-100",
     },
     {
       title: "Total Items Sold",
-      value: dashboardData?.overview?.today?.totalItems || 0,
+      value: todayStats.totalItems,
       icon: Package,
       color: "text-blue-600",
       bgColor: "bg-blue-100",
     },
     {
       title: "Gross Margin",
-      value: formatPercentage(48.66), // From your JSON data
+      value: formatPercentage(41.96), // From your API data
       icon: TrendingUp,
-      color: "text-purple-600",
-      bgColor: "bg-purple-100",
+      color: "text-emerald-600",
+      bgColor: "bg-emerald-100",
     },
     {
       title: "Customer Repeat Rate",
-      value: formatPercentage(71.43), // From your JSON data
+      value: formatPercentage(70), // From your API data
       icon: Users,
       color: "text-pink-600",
       bgColor: "bg-pink-100",
@@ -1208,7 +1311,7 @@ export default function ReportView() {
           </motion.div>
         )}
 
-        {/* Analytics Tabs */}
+        {/* Analytics Tabs - Simplified without graphs */}
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
@@ -1250,7 +1353,7 @@ export default function ReportView() {
               </TabsTrigger>
             </TabsList>
 
-            {/* Overview Tab */}
+            {/* Overview Tab - Simplified */}
             <TabsContent value="overview" className="space-y-6">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <motion.div
@@ -1269,17 +1372,36 @@ export default function ReportView() {
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <TremorLineChart
-                        className="h-80"
-                        data={weeklyTrendData}
-                        index="Week"
-                        categories={["Revenue"]}
-                        colors={["purple"]}
-                        valueFormatter={(value) => formatCurrency(value)}
-                        showAnimation={true}
-                        showLegend={false}
-                        curveType="natural"
-                      />
+                      <div className="space-y-4">
+                        {dashboardData.analytics.salesTrend && dashboardData.analytics.salesTrend.length > 0 ? (
+                          dashboardData.analytics.salesTrend.map((item: any, index: number) => (
+                            <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
+                              <div>
+                                <p className="font-medium">{item.period}</p>
+                                <p className="text-sm text-muted-foreground">{item.orderCount} orders</p>
+                              </div>
+                              <div className="text-right">
+                                <p className="font-bold">{formatCurrency(item.totalSales)}</p>
+                                <p className="text-sm text-muted-foreground">Avg: {formatCurrency(item.avgOrderValue)}</p>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="h-80 flex items-center justify-center">
+                            <div className="text-center">
+                              <p className="text-muted-foreground">No sales trend data available</p>
+                              <Button 
+                                variant="outline" 
+                                className="mt-4"
+                                onClick={fetchDashboardData}
+                              >
+                                <RefreshCw className="w-4 h-4 mr-2" />
+                                Refresh Data
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </CardContent>
                   </Card>
                 </motion.div>
@@ -1297,17 +1419,34 @@ export default function ReportView() {
                       </CardTitle>
                       <CardDescription>Best selling items</CardDescription>
                     </CardHeader>
-                    <CardContent className="flex items-center justify-center">
-                      <DonutChart
-                        className="h-80"
-                        data={topProductsData}
-                        category="sales"
-                        index="name"
-                        colors={["purple", "pink", "cyan", "amber", "emerald"]}
-                        valueFormatter={(value) => `${value} units`}
-                        showAnimation={true}
-                        showLabel={true}
-                      />
+                    <CardContent>
+                      <div className="space-y-4">
+                        {dashboardData.analytics.topProducts && dashboardData.analytics.topProducts.length > 0 ? (
+                          dashboardData.analytics.topProducts.map((product: any, index: number) => (
+                            <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
+                              <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                                  <span className="font-bold text-primary">{index + 1}</span>
+                                </div>
+                                <div>
+                                  <p className="font-medium">{product.name}</p>
+                                  <p className="text-sm text-muted-foreground">{product.quantity} units sold</p>
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <p className="font-bold">{formatCurrency(product.revenue)}</p>
+                                <p className="text-sm text-muted-foreground">
+                                  Avg: {formatCurrency(product.revenue / (product.quantity || 1))}
+                                </p>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="h-80 flex items-center justify-center">
+                            <p className="text-muted-foreground">No product data available</p>
+                          </div>
+                        )}
+                      </div>
                     </CardContent>
                   </Card>
                 </motion.div>
@@ -1321,7 +1460,7 @@ export default function ReportView() {
                 <Card className="border-border/50 hover:shadow-xl transition-shadow duration-300">
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
-                      <BarChart3 className="w-5 h-5 text-cyan-500" />
+                      <BarChart3 className="w-5 h-5 text-blue-500" />
                       Payment Method Distribution
                     </CardTitle>
                     <CardDescription>
@@ -1329,24 +1468,39 @@ export default function ReportView() {
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="h-80">
-                      <DonutChart
-                        className="h-full"
-                        data={paymentSplitData}
-                        category="value"
-                        index="name"
-                        valueFormatter={formatPercentage}
-                        colors={["emerald", "blue", "amber", "rose", "violet"]}
-                        showAnimation={true}
-                        showLabel={true}
-                      />
+                    <div className="space-y-4">
+                      {dashboardData.analytics.paymentSplit && dashboardData.analytics.paymentSplit.length > 0 ? (
+                        dashboardData.analytics.paymentSplit
+                          .filter((item: any) => item.percentage > 0)
+                          .map((payment: any, index: number) => (
+                            <div key={index} className="space-y-2">
+                              <div className="flex justify-between">
+                                <span className="font-medium">{formatPaymentMethod(payment.method)}</span>
+                                <span className="font-bold">{formatCurrency(payment.amount)} ({payment.percentage.toFixed(1)}%)</span>
+                              </div>
+                              <div className="w-full bg-gray-200 rounded-full h-2">
+                                <div 
+                                  className="h-2 rounded-full"
+                                  style={{ 
+                                    width: `${payment.percentage}%`,
+                                    backgroundColor: CHART_COLORS.paymentMethods[payment.method as keyof typeof CHART_COLORS.paymentMethods] || CHART_COLORS.paymentMethods.other
+                                  }}
+                                />
+                              </div>
+                            </div>
+                          ))
+                      ) : (
+                        <div className="h-full flex items-center justify-center">
+                          <p className="text-muted-foreground">No payment data available</p>
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
               </motion.div>
             </TabsContent>
 
-            {/* Sales Tab */}
+            {/* Sales Tab - Simplified */}
             <TabsContent value="sales" className="space-y-6">
               <motion.div
                 initial={{ opacity: 0, y: 30 }}
@@ -1364,80 +1518,74 @@ export default function ReportView() {
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <AreaChart
-                      className="h-96"
-                      data={weeklyTrendData}
-                      index="Week"
-                      categories={["Revenue", "Orders"]}
-                      colors={["emerald", "blue"]}
-                      valueFormatter={(value) => `${value}`}
-                      showAnimation={true}
-                      showLegend={true}
-                      showGridLines={true}
-                      curveType="natural"
-                      stack={false}
-                    />
+                    <div className="space-y-6">
+                      {dashboardData.analytics.salesTrend && dashboardData.analytics.salesTrend.length > 0 ? (
+                        <>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="p-4 border rounded-lg">
+                              <p className="text-sm text-muted-foreground">Total Revenue</p>
+                              <p className="text-2xl font-bold">
+                                {formatCurrency(dashboardData.analytics.salesTrend.reduce((sum, item) => sum + item.totalSales, 0))}
+                              </p>
+                            </div>
+                            <div className="p-4 border rounded-lg">
+                              <p className="text-sm text-muted-foreground">Total Orders</p>
+                              <p className="text-2xl font-bold">
+                                {dashboardData.analytics.salesTrend.reduce((sum, item) => sum + item.orderCount, 0)}
+                              </p>
+                            </div>
+                            <div className="p-4 border rounded-lg">
+                              <p className="text-sm text-muted-foreground">Average Order Value</p>
+                              <p className="text-2xl font-bold">
+                                {formatCurrency(
+                                  dashboardData.analytics.salesTrend.reduce((sum, item) => sum + item.totalSales, 0) /
+                                  dashboardData.analytics.salesTrend.reduce((sum, item) => sum + item.orderCount, 1)
+                                )}
+                              </p>
+                            </div>
+                          </div>
+                          
+                          <div className="space-y-3">
+                            {dashboardData.analytics.salesTrend.map((item: any, index: number) => (
+                              <div key={index} className="p-4 border rounded-lg">
+                                <div className="flex justify-between items-start">
+                                  <div>
+                                    <p className="font-bold">{item.period}</p>
+                                    <p className="text-sm text-muted-foreground">{item.orderCount} orders</p>
+                                  </div>
+                                  <div className="text-right">
+                                    <p className="font-bold">{formatCurrency(item.totalSales)}</p>
+                                    <p className="text-sm text-muted-foreground">
+                                      Avg: {formatCurrency(item.avgOrderValue)}
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      ) : (
+                        <div className="h-96 flex items-center justify-center">
+                          <div className="text-center">
+                            <p className="text-muted-foreground">No sales data available</p>
+                            <Button 
+                              variant="outline" 
+                              className="mt-4"
+                              onClick={() => fetchReportData("sales-trend", { period: "weekly", weeks: 8 })}
+                            >
+                              <TrendingUp className="w-4 h-4 mr-2" />
+                              Load Sales Trend
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </CardContent>
                 </Card>
               </motion.div>
-
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <motion.div
-                  initial={{ opacity: 0, x: -30 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.9, duration: 0.5 }}
-                >
-                  <Card className="border-border/50 hover:shadow-xl transition-shadow duration-300">
-                    <CardHeader>
-                      <CardTitle>Average Order Value</CardTitle>
-                      <CardDescription>Trends over time</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <BarChart
-                        className="h-80"
-                        data={weeklyTrendData}
-                        index="Week"
-                        categories={["Avg Order"]}
-                        colors={["amber"]}
-                        valueFormatter={(value) => formatCurrency(value)}
-                        showAnimation={true}
-                        showLegend={false}
-                      />
-                    </CardContent>
-                  </Card>
-                </motion.div>
-
-                <motion.div
-                  initial={{ opacity: 0, x: 30 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 1.0, duration: 0.5 }}
-                >
-                  <Card className="border-border/50 hover:shadow-xl transition-shadow duration-300">
-                    <CardHeader>
-                      <CardTitle>Top Products Revenue</CardTitle>
-                      <CardDescription>
-                        Revenue breakdown by product
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <BarChart
-                        className="h-80"
-                        data={topProductsData}
-                        index="name"
-                        categories={["revenue"]}
-                        colors={["purple"]}
-                        valueFormatter={(value) => formatCurrency(value)}
-                        showAnimation={true}
-                        layout="vertical"
-                        showLegend={false}
-                      />
-                    </CardContent>
-                  </Card>
-                </motion.div>
-              </div>
             </TabsContent>
 
-            {/* Analytics Tab */}
+            {/* Analytics Tab - Simplified */}
             <TabsContent value="analytics" className="space-y-6">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <motion.div
@@ -1456,15 +1604,31 @@ export default function ReportView() {
                       </CardDescription>
                     </CardHeader>
                     <CardContent className="pt-6">
-                      <DonutChart
-                        className="h-72"
-                        data={paymentSplitData}
-                        category="value"
-                        index="name"
-                        valueFormatter={formatPercentage}
-                        colors={["emerald", "blue", "amber", "rose", "violet"]}
-                        showAnimation={true}
-                      />
+                      <div className="space-y-4">
+                        {dashboardData.analytics.paymentSplit && dashboardData.analytics.paymentSplit.length > 0 ? (
+                          dashboardData.analytics.paymentSplit
+                            .filter((item: any) => item.percentage > 0)
+                            .map((payment: any, index: number) => (
+                              <div key={index} className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                  <div 
+                                    className="w-3 h-3 rounded-full"
+                                    style={{ backgroundColor: CHART_COLORS.paymentMethods[payment.method as keyof typeof CHART_COLORS.paymentMethods] || CHART_COLORS.paymentMethods.other }}
+                                  />
+                                  <span>{formatPaymentMethod(payment.method)}</span>
+                                </div>
+                                <div className="text-right">
+                                  <span className="font-bold">{formatCurrency(payment.amount)}</span>
+                                  <span className="ml-2 text-muted-foreground">({payment.percentage.toFixed(1)}%)</span>
+                                </div>
+                              </div>
+                            ))
+                        ) : (
+                          <div className="h-72 flex items-center justify-center">
+                            <p className="text-muted-foreground">No payment data</p>
+                          </div>
+                        )}
+                      </div>
                     </CardContent>
                   </Card>
                 </motion.div>
@@ -1483,85 +1647,48 @@ export default function ReportView() {
                       <CardDescription>Online vs Offline sales</CardDescription>
                     </CardHeader>
                     <CardContent className="pt-6">
-                      <DonutChart
-                        className="h-72"
-                        data={channelSplitData}
-                        category="value"
-                        index="name"
-                        valueFormatter={formatPercentage}
-                        colors={["cyan", "orange"]}
-                        showAnimation={true}
-                      />
+                      <div className="space-y-4">
+                        {dashboardData.analytics.channelSplit && dashboardData.analytics.channelSplit.length > 0 ? (
+                          dashboardData.analytics.channelSplit.map((channel: any, index: number) => (
+                            <div key={index} className="space-y-2">
+                              <div className="flex justify-between">
+                                <div className="flex items-center gap-3">
+                                  <div 
+                                    className="w-3 h-3 rounded-full"
+                                    style={{ backgroundColor: CHART_COLORS.channels[channel.channel as keyof typeof CHART_COLORS.channels] }}
+                                  />
+                                  <span className="font-medium">{formatChannel(channel.channel)}</span>
+                                </div>
+                                <span className="font-bold">{formatCurrency(channel.amount)} ({channel.percentage.toFixed(1)}%)</span>
+                              </div>
+                              <div className="w-full bg-gray-200 rounded-full h-2">
+                                <div 
+                                  className="h-2 rounded-full"
+                                  style={{ 
+                                    width: `${channel.percentage}%`,
+                                    backgroundColor: CHART_COLORS.channels[channel.channel as keyof typeof CHART_COLORS.channels]
+                                  }}
+                                />
+                              </div>
+                              <div className="text-sm text-muted-foreground flex justify-between">
+                                <span>{channel.count} orders</span>
+                                <span>Avg: {formatCurrency(channel.avgOrderValue)}</span>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="h-72 flex items-center justify-center">
+                            <p className="text-muted-foreground">No channel data</p>
+                          </div>
+                        )}
+                      </div>
                     </CardContent>
                   </Card>
                 </motion.div>
               </div>
-
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, delay: 0.3 }}
-              >
-                <Card className="rounded-2xl border-border/40 shadow-lg overflow-hidden">
-                  <CardHeader className="bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-cyan-500/10">
-                    <CardTitle className="flex items-center gap-2">
-                      <LineChart className="w-5 h-5" />
-                      Weekly Sales Trend
-                    </CardTitle>
-                    <CardDescription>
-                      Performance overview with metrics
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="pt-6">
-                    <BarChart
-                      className="h-72"
-                      data={weeklyTrendData}
-                      index="Week"
-                      categories={["Revenue", "Orders", "Avg Order"]}
-                      colors={["emerald", "blue", "violet"]}
-                      valueFormatter={(value) => formatCurrency(value)}
-                      showLegend={true}
-                      showGridLines={true}
-                      showAnimation={true}
-                    />
-                  </CardContent>
-                </Card>
-              </motion.div>
-
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, delay: 0.4 }}
-              >
-                <Card className="rounded-2xl border-border/40 shadow-lg overflow-hidden">
-                  <CardHeader className="bg-gradient-to-r from-amber-500/10 to-orange-500/10">
-                    <CardTitle className="flex items-center gap-2">
-                      <BarChartIcon className="w-5 h-5" />
-                      Top Products Performance
-                    </CardTitle>
-                    <CardDescription>
-                      Quantity sold and revenue generated
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="pt-6">
-                    <BarChart
-                      className="h-72"
-                      data={topProductsData}
-                      index="name"
-                      categories={["sales", "revenue"]}
-                      colors={["indigo", "rose"]}
-                      valueFormatter={(value: number) => value.toString()}
-                      showLegend={true}
-                      showGridLines={true}
-                      showAnimation={true}
-                      layout="vertical"
-                    />
-                  </CardContent>
-                </Card>
-              </motion.div>
             </TabsContent>
 
-            {/* Reports Tab */}
+            {/* Reports Tab - Simplified */}
             <TabsContent value="reports" className="space-y-6">
               <motion.div
                 initial={{ opacity: 0, y: 30 }}
@@ -1782,28 +1909,11 @@ export default function ReportView() {
             {dateRange.start.toLocaleDateString()} to {dateRange.end.toLocaleDateString()}
             {isDemoMode && " • Using demo data"}
           </p>
+          <p className="mt-2 text-xs">
+            Sales trend data: {dashboardData.analytics.salesTrend?.length || 0} weeks available
+          </p>
         </motion.div>
       </main>
     </div>
   );
 }
-
-// Add missing import for Download icon
-const Download = (props: any) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width="24"
-    height="24"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    {...props}
-  >
-    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-    <polyline points="7 10 12 15 17 10" />
-    <line x1="12" y1="15" x2="12" y2="3" />
-  </svg>
-);
