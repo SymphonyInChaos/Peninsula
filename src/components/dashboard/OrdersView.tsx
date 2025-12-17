@@ -37,6 +37,14 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
+import {
   Plus,
   Loader2,
   AlertCircle,
@@ -90,16 +98,6 @@ interface BackendOrder {
   }>;
 }
 
-interface PaginatedResponse {
-  orders: BackendOrder[];
-  pagination: {
-    total: number;
-    page: number;
-    limit: number;
-    pages: number;
-  };
-}
-
 interface TransformedOrder {
   sequentialId: number;
   id: string;
@@ -138,7 +136,9 @@ const badgeVariants = cva("capitalize text-white", {
 
 const transformOrder = (
   order: BackendOrder,
-  index: number
+  index: number,
+  currentPage: number,
+  pageSize: number
 ): TransformedOrder => {
   const mapStatus = (backendStatus: string): TransformedOrder["status"] => {
     const status = backendStatus.toLowerCase();
@@ -193,7 +193,7 @@ const transformOrder = (
     : "other";
 
   return {
-    sequentialId: index + 1,
+    sequentialId: (currentPage - 1) * pageSize + index + 1,
     id: order.id,
     customer:
       order.customer?.name ||
@@ -287,10 +287,12 @@ const OrdersView = () => {
   const [deletingOrder, setDeletingOrder] = useState<BackendOrder | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [paymentFilter, setPaymentFilter] = useState<string>("all");
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 20;
 
-  // Fix the useQuery hook with proper types
+  // Fetch all orders - assuming backend returns array
   const {
-    data: ordersData,
+    data: allOrders = [],
     isLoading,
     error,
   } = useQuery<BackendOrder[]>({
@@ -302,8 +304,11 @@ const OrdersView = () => {
         if (Array.isArray(response)) {
           return response;
         }
-        // Backend returns { orders: [], pagination: {} }
-        return (response as PaginatedResponse)?.orders || [];
+        // If response has orders property
+        if (response && typeof response === 'object' && 'orders' in response) {
+          return (response as any).orders || [];
+        }
+        return [];
       } catch (err) {
         console.error("Error fetching orders:", err);
         throw err;
@@ -313,12 +318,37 @@ const OrdersView = () => {
     retry: 2,
   });
 
+  // Apply filters
+  const filteredOrders = allOrders.filter((order) => {
+    const statusMatch = statusFilter === "all" || 
+      order.status.toLowerCase().includes(statusFilter.toLowerCase());
+    
+    const paymentMatch = paymentFilter === "all" ||
+      (paymentFilter === "other" 
+        ? !["cash", "card", "upi", "wallet", "qr"].includes(order.paymentMethod.toLowerCase())
+        : order.paymentMethod.toLowerCase() === paymentFilter.toLowerCase());
+    
+    return statusMatch && paymentMatch;
+  });
+
+  // Calculate pagination
+  const totalOrders = filteredOrders.length;
+  const totalPages = Math.ceil(totalOrders / pageSize);
+  const startIndex = (currentPage - 1) * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, totalOrders);
+  
+  // Get paginated orders
+  const paginatedOrders = filteredOrders.slice(startIndex, endIndex);
+  
+  // Transform orders for display
+  const transformedOrders = paginatedOrders.map((order, index) =>
+    transformOrder(order, index, currentPage, pageSize)
+  );
+
   const deleteOrderMutation = useMutation({
     mutationFn: (id: string) => api.orders.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["orders"] });
-      queryClient.invalidateQueries({ queryKey: ["customers"] });
-      queryClient.invalidateQueries({ queryKey: ["products"] });
       toast.success("Order deleted successfully");
       setDeletingOrder(null);
     },
@@ -359,6 +389,98 @@ const OrdersView = () => {
     }),
   };
 
+  // Pagination handlers
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+  };
+
+  const handlePreviousPage = () => {
+    if (currentPage > 1) {
+      setCurrentPage(currentPage - 1);
+    }
+  };
+
+  const handleNextPage = () => {
+    if (currentPage < totalPages) {
+      setCurrentPage(currentPage + 1);
+    }
+  };
+
+  // Calculate statistics from ALL orders (not just current page)
+  const pendingOrders = allOrders.filter((o) => 
+    o.status.toLowerCase().includes("pending") || 
+    o.status.toLowerCase().includes("new")
+  );
+  const processingOrders = allOrders.filter((o) =>
+    o.status.toLowerCase().includes("process") ||
+    o.status.toLowerCase().includes("confirm") ||
+    o.status.toLowerCase().includes("ship")
+  );
+  const completedOrders = allOrders.filter((o) =>
+    o.status.toLowerCase().includes("complete") ||
+    o.status.toLowerCase().includes("delivered")
+  );
+  const cancelledOrders = allOrders.filter((o) =>
+    o.status.toLowerCase().includes("cancel")
+  );
+  const refundedOrders = allOrders.filter((o) =>
+    o.status.toLowerCase().includes("refund")
+  );
+
+  const pendingTotal = pendingOrders.reduce((sum, o) => sum + o.total, 0);
+  const processingTotal = processingOrders.reduce((sum, o) => sum + o.total, 0);
+  const completedTotal = completedOrders.reduce((sum, o) => sum + o.total, 0);
+  const cancelledTotal = cancelledOrders.reduce((sum, o) => sum + o.total, 0);
+  const refundedTotal = refundedOrders.reduce((sum, o) => sum + o.total, 0);
+  const allOrdersTotal = allOrders.reduce((sum, o) => sum + o.total, 0);
+
+  const tableHeaders = [
+    { key: "sequentialId", label: "ID" },
+    { key: "customer", label: "Customer" },
+    { key: "date", label: "Date" },
+    { key: "items", label: "Items" },
+    { key: "total", label: "Total" },
+    { key: "paymentMethod", label: "Payment" },
+    { key: "cashier", label: "Cashier" },
+    { key: "status", label: "Status" },
+    { key: "actions", label: "Actions" },
+  ];
+
+  const handleStatusUpdate = (orderId: string, status: string) => {
+    updateStatusMutation.mutate({ orderId, status });
+  };
+
+  // Generate pagination items
+  const generatePaginationItems = () => {
+    const items = [];
+    const maxVisiblePages = 5;
+    let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
+    let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+
+    if (endPage - startPage + 1 < maxVisiblePages) {
+      startPage = Math.max(1, endPage - maxVisiblePages + 1);
+    }
+
+    for (let i = startPage; i <= endPage; i++) {
+      items.push(
+        <PaginationItem key={i}>
+          <PaginationLink
+            href="#"
+            isActive={currentPage === i}
+            onClick={(e) => {
+              e.preventDefault();
+              handlePageChange(i);
+            }}
+          >
+            {i}
+          </PaginationLink>
+        </PaginationItem>
+      );
+    }
+
+    return items;
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -378,54 +500,6 @@ const OrdersView = () => {
       </Alert>
     );
   }
-
-  const orders = ordersData || [];
-  const transformedOrders = orders.map(transformOrder);
-
-  const filteredOrders = transformedOrders.filter((order) => {
-    const statusMatch = statusFilter === "all" || order.status === statusFilter;
-    const paymentMatch =
-      paymentFilter === "all" || order.paymentMethod === paymentFilter;
-    return statusMatch && paymentMatch;
-  });
-
-  // Calculate statistics
-  const pendingOrders = transformedOrders.filter((o) => o.status === "pending");
-  const processingOrders = transformedOrders.filter(
-    (o) => o.status === "processing"
-  );
-  const completedOrders = transformedOrders.filter(
-    (o) => o.status === "completed"
-  );
-  const cancelledOrders = transformedOrders.filter(
-    (o) => o.status === "cancelled"
-  );
-  const refundedOrders = transformedOrders.filter(
-    (o) => o.status === "refunded"
-  );
-
-  const pendingTotal = pendingOrders.reduce((sum, o) => sum + o.total, 0);
-  const processingTotal = processingOrders.reduce((sum, o) => sum + o.total, 0);
-  const completedTotal = completedOrders.reduce((sum, o) => sum + o.total, 0);
-  const cancelledTotal = cancelledOrders.reduce((sum, o) => sum + o.total, 0);
-  const refundedTotal = refundedOrders.reduce((sum, o) => sum + o.total, 0);
-  const allOrdersTotal = transformedOrders.reduce((sum, o) => sum + o.total, 0);
-
-  const tableHeaders = [
-    { key: "sequentialId", label: "ID" },
-    { key: "customer", label: "Customer" },
-    { key: "date", label: "Date" },
-    { key: "items", label: "Items" },
-    { key: "total", label: "Total" },
-    { key: "paymentMethod", label: "Payment" },
-    { key: "cashier", label: "Cashier" },
-    { key: "status", label: "Status" },
-    { key: "actions", label: "Actions" },
-  ];
-
-  const handleStatusUpdate = (orderId: string, status: string) => {
-    updateStatusMutation.mutate({ orderId, status });
-  };
 
   return (
     <>
@@ -459,9 +533,7 @@ const OrdersView = () => {
                 <div className="text-sm text-muted-foreground mb-1">
                   Total Orders
                 </div>
-                <div className="text-3xl font-bold">
-                  {transformedOrders.length}
-                </div>
+                <div className="text-3xl font-bold">{allOrders.length}</div>
                 <div className="text-sm text-muted-foreground mt-2">
                   All Statuses
                 </div>
@@ -469,7 +541,9 @@ const OrdersView = () => {
               <div className="text-2xl">📦</div>
             </div>
             <div className="mt-4 pt-4 border-t border-border/50">
-              <div className="text-sm text-muted-foreground">Total Revenue</div>
+              <div className="text-sm text-muted-foreground">
+                {/* Showing {transformedOrders.length} of {totalOrders} */}
+              </div>
               <div className="text-xl font-semibold text-green-600">
                 ₹{allOrdersTotal.toFixed(2)}
               </div>
@@ -512,7 +586,102 @@ const OrdersView = () => {
             status="refunded"
           />
         </div>
+    {/* Pagination - Only show if we have more than one page */}
+    {totalPages > 1 && (
+          <div className="flex items-center justify-between px-2">
+            {/* <div className="text-sm text-muted-foreground">
+              Showing{" "}
+              <span className="font-medium">
+                {totalOrders > 0 ? startIndex + 1 : 0}
+              </span>{" "}
+              to{" "}
+              <span className="font-medium">
+                {endIndex}
+              </span>{" "}
+              of <span className="font-medium">{totalOrders}</span> orders
+            </div> */}
+            <Pagination>
+              <PaginationContent>
+                <PaginationItem>
+                  <PaginationPrevious
+                    href="#"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      handlePreviousPage();
+                    }}
+                    className={
+                      currentPage === 1
+                        ? "pointer-events-none opacity-50"
+                        : undefined
+                    }
+                  />
+                </PaginationItem>
 
+                {/* First page */}
+                {currentPage > 3 && (
+                  <>
+                    <PaginationItem>
+                      <PaginationLink
+                        href="#"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          handlePageChange(1);
+                        }}
+                      >
+                        1
+                      </PaginationLink>
+                    </PaginationItem>
+                    {currentPage > 4 && (
+                      <PaginationItem>
+                        <span className="px-2">...</span>
+                      </PaginationItem>
+                    )}
+                  </>
+                )}
+
+                {/* Page numbers */}
+                {generatePaginationItems()}
+
+                {/* Last page */}
+                {currentPage < totalPages - 2 && (
+                  <>
+                    {currentPage < totalPages - 3 && (
+                      <PaginationItem>
+                        <span className="px-2">...</span>
+                      </PaginationItem>
+                    )}
+                    <PaginationItem>
+                      <PaginationLink
+                        href="#"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          handlePageChange(totalPages);
+                        }}
+                      >
+                        {totalPages}
+                      </PaginationLink>
+                    </PaginationItem>
+                  </>
+                )}
+
+                <PaginationItem>
+                  <PaginationNext
+                    href="#"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      handleNextPage();
+                    }}
+                    className={
+                      currentPage === totalPages
+                        ? "pointer-events-none opacity-50"
+                        : undefined
+                    }
+                  />
+                </PaginationItem>
+              </PaginationContent>
+            </Pagination>
+          </div>
+        )}
         {/* Filters */}
         <div className="flex gap-4 items-center">
           <div className="flex-1 max-w-xs">
@@ -572,8 +741,8 @@ const OrdersView = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredOrders.length > 0 ? (
-                  filteredOrders.map((order, index) => (
+                {transformedOrders.length > 0 ? (
+                  transformedOrders.map((order, index) => (
                     <motion.tr
                       key={order.id}
                       custom={index}
@@ -697,7 +866,7 @@ const OrdersView = () => {
                             variant="ghost"
                             size="sm"
                             onClick={() => {
-                              const rawOrder = orders.find(
+                              const rawOrder = allOrders.find(
                                 (o) => o.id === order.id
                               );
                               setEditingOrder(rawOrder || null);
@@ -713,7 +882,7 @@ const OrdersView = () => {
                             size="sm"
                             className="text-destructive hover:text-destructive"
                             onClick={() => {
-                              const rawOrder = orders.find(
+                              const rawOrder = allOrders.find(
                                 (o) => o.id === order.id
                               );
                               setDeletingOrder(rawOrder || null);
@@ -731,11 +900,9 @@ const OrdersView = () => {
                       colSpan={tableHeaders.length}
                       className="h-24 text-center"
                     >
-                      {transformedOrders.length === 0
+                      {allOrders.length === 0
                         ? "No orders found. Try creating a new order or check if the backend is running."
-                        : statusFilter !== "all" || paymentFilter !== "all"
-                        ? "No orders match the selected filters."
-                        : "No orders found."}
+                        : "No orders match the current filters."}
                     </TableCell>
                   </TableRow>
                 )}
@@ -743,6 +910,8 @@ const OrdersView = () => {
             </Table>
           </div>
         </div>
+
+    
       </div>
 
       {/* Order Form Modal */}

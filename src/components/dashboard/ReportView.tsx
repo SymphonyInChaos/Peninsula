@@ -18,21 +18,21 @@ import {
   DollarSign,
   ShoppingCart,
   AlertTriangle,
-  ArrowUpRight,
-  ArrowDownRight,
   Loader2,
   RefreshCw,
   Sparkles,
   CreditCard,
   Globe,
   LineChart,
-  PieChart,
+  PieChart as PieChartIcon,
   CalendarIcon,
-  Users,
-  BarChart as BarChartIcon,
-  Tag,
-  AlertCircle,
   Download,
+  TrendingDown,
+  BarChart2,
+  Activity,
+  Target,
+  Users,
+  AlertCircle,
 } from "lucide-react";
 import {
   Popover,
@@ -40,16 +40,37 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { format } from "date-fns";
+import { format, subDays } from "date-fns";
 
 // Import the centralized API utilities
-import { api, formatCurrency, formatPercentage, getPaymentMethodColor, getChannelColor } from "@/lib/api";
-import type { DashboardData, PaymentMethod, ChannelType } from "@/lib/api";
+import { api, formatCurrency, formatPercentage } from "@/lib/api";
+import type { DashboardData } from "@/lib/api";
 
-// API base URL (keep for backward compatibility)
-const API_BASE = "http://localhost:5000/api";
+// Import Recharts components
+import {
+  BarChart,
+  Bar,
+  LineChart as RechartsLineChart,
+  Line,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RechartsTooltip,
+  Legend,
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  RadarChart,
+  Radar,
+  PolarGrid,
+  PolarAngleAxis,
+  PolarRadiusAxis,
+} from "recharts";
 
-// Utility functions - use imported ones instead of duplicating
+// Utility functions
 const formatPaymentMethod = (method: string): string => {
   return api.payments.formatPaymentMethod(method);
 };
@@ -60,263 +81,460 @@ const formatChannel = (channel: string): string => {
 
 // Color Schemes for Charts
 const CHART_COLORS = {
-  // Revenue/Sales charts
-  revenue: ["purple", "blue"], 
-  sales: ["green", "blue", "purple"],
-  orders: ["blue", "cyan"],
-  
-  // Payment methods
   paymentMethods: {
-    cash: "orange",
-    upi: "green",
-    card: "purple",
-    qr: "red",
-    wallet: "pink",
-    other: "gray",
+    cash: "#f97316", // orange
+    upi: "#22c55e", // green
+    card: "#8b5cf6", // purple
+    qr: "#ef4444", // red
+    wallet: "#ec4899", // pink
+    other: "#6b7280", // gray
   },
-  
-  // Channels
   channels: {
-    online: "blue",
-    offline: "orange",
+    online: "#3b82f6", // blue
+    offline: "#f59e0b", // orange
   },
-  
-  // Products
-  products: ["purple", "pink", "green", "orange", "blue", "cyan"],
-  
-  // Performance indicators
-  performance: {
-    high: "red",
-    medium: "orange",
-    low: "green",
-  },
-  
-  // Trends
-  trends: {
-    positive: "green",
-    negative: "red",
-    neutral: "gray",
-  }
 };
 
-// Calculate today's stats from payment split data
-const calculateTodayStats = (dashboardData: DashboardData) => {
-  if (!dashboardData?.analytics?.paymentSplit) {
-    return {
-      revenue: 0,
-      orders: 0,
-      avgOrder: 0,
-      totalItems: 0,
-      netRevenue: 0
-    };
+// Chart Components
+
+// Sales Trend Chart Component
+const SalesTrendChart = ({ data }: { data: any[] }) => {
+  if (!data || data.length === 0) {
+    return (
+      <div className="h-64 flex items-center justify-center">
+        <p className="text-muted-foreground">No sales data available</p>
+      </div>
+    );
   }
 
-  // Calculate from payment split data
-  const paymentSplit = dashboardData.analytics.paymentSplit;
-  const totalRevenue = paymentSplit.reduce((sum, payment) => sum + (payment.amount || 0), 0);
-  const totalOrders = paymentSplit.reduce((sum, payment) => sum + (payment.count || 0), 0);
-  const avgOrder = totalOrders > 0 ? totalRevenue / totalOrders : 0;
-  
-  // Estimate total items (average 2 items per order)
-  const totalItems = totalOrders * 2;
-
-  return {
-    revenue: totalRevenue,
-    orders: totalOrders,
-    avgOrder,
-    totalItems,
-    netRevenue: totalRevenue
-  };
+  return (
+    <div className="h-80">
+      <ResponsiveContainer width="100%" height="100%">
+        <AreaChart data={data} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+          <defs>
+            <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor="#8884d8" stopOpacity={0.8} />
+              <stop offset="95%" stopColor="#8884d8" stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.2} />
+          <XAxis 
+            dataKey="period" 
+            stroke="#9ca3af" 
+            fontSize={12}
+            tickLine={false}
+            axisLine={false}
+          />
+          <YAxis 
+            stroke="#9ca3af" 
+            fontSize={12}
+            tickLine={false}
+            axisLine={false}
+            tickFormatter={(value) => `$${value}`}
+          />
+          <RechartsTooltip
+            contentStyle={{ 
+              backgroundColor: 'rgba(17, 24, 39, 0.9)',
+              border: '1px solid #374151',
+              borderRadius: '8px',
+              backdropFilter: 'blur(10px)'
+            }}
+            formatter={(value) => [formatCurrency(value), 'Revenue']}
+            labelFormatter={(label) => `Period: ${label}`}
+          />
+          <Legend />
+          <Area
+            type="monotone"
+            dataKey="totalSales"
+            stroke="#8884d8"
+            fillOpacity={1}
+            fill="url(#colorSales)"
+            strokeWidth={3}
+            name="Revenue"
+            dot={{ stroke: '#8884d8', strokeWidth: 2, r: 4 }}
+            activeDot={{ r: 6, strokeWidth: 2 }}
+          />
+          <Line
+            type="monotone"
+            dataKey="orderCount"
+            stroke="#10b981"
+            strokeWidth={2}
+            name="Orders"
+            strokeDasharray="5 5"
+            dot={{ stroke: '#10b981', strokeWidth: 2, r: 3 }}
+          />
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  );
 };
 
-// Generate fallback dashboard data with calculated stats
-const generateFallbackDashboard = (): DashboardData => {
-  const fallbackData: DashboardData = {
-    overview: {
-      today: {
-        revenue: 383.11,
-        orders: 3,
-        avgOrder: 127.7,
-        totalItems: 9,
-        netRevenue: 383.11
-      },
-      inventory: {
-        totalValue: 18229.99,
-        lowStockItems: 0,
-        outOfStock: 0,
-        healthyStock: 0
-      },
-      payment: {
-        topMethod: "card" as PaymentMethod,
-        cashPercentage: 22.58,
-        upiPercentage: 19.35,
-        cardPercentage: 29.03,
-        walletPercentage: 0,
-        qrPercentage: 0,
-        digitalAdoption: 77.41,
-      },
-      channels: {
-        onlinePercentage: 61.29,
-        offlinePercentage: 38.71,
-        dominantChannel: "online" as ChannelType,
-      },
-    },
-    analytics: {
-      paymentSplit: [
-        {
-          method: "card",
-          count: 1,
-          amount: 467.03,
-          percentage: 16.67,
-        },
-        {
-          method: "upi",
-          count: 2,
-          amount: 230.91,
-          percentage: 33.33,
-        },
-        {
-          method: "cash",
-          count: 2,
-          amount: 115.45,
-          percentage: 33.33,
-        },
-        {
-          method: "qr",
-          count: 1,
-          amount: 0,
-          percentage: 16.67,
-        },
-        {
-          method: "wallet",
-          count: 0,
-          amount: 0,
-          percentage: 0,
-        },
-        {
-          method: "other",
-          count: 0,
-          amount: 0,
-          percentage: 0,
-        },
-      ],
-      channelSplit: [
-        {
-          channel: "online",
-          count: 4,
-          amount: 230.91,
-          percentage: 66.67,
-          avgOrderValue: 57.73,
-        },
-        {
-          channel: "offline",
-          count: 2,
-          amount: 152.2,
-          percentage: 33.33,
-          avgOrderValue: 76.1,
-        },
-      ],
-      hourlyBreakdown: Array.from({ length: 24 }, (_, i) => ({
-        hour: `${i.toString().padStart(2, "0")}:00`,
-        sales: 0,
-        orders: 0,
-        refunds: 0,
-        netSales: 0,
-        dominantPaymentMethod: "cash" as "cash" | "upi" | "card",
-        onlinePercentage: 0,
-      })),
-      salesTrend: [
-        {
-          period: "Week 51",
-          totalSales: 3033.09,
-          orderCount: 10,
-          avgOrderValue: 303.31,
-        },
-        {
-          period: "Week 50",
-          totalSales: 5761.75,
-          orderCount: 19,
-          avgOrderValue: 303.25,
-        },
-      ],
-      topProducts: [
-        {
-          name: "Croissant",
-          quantity: 7,
-          revenue: 1359.12,
-        },
-        {
-          name: "Wrap",
-          quantity: 2,
-          revenue: 157.41,
-        },
-      ],
-    },
-    alerts: {
-      critical: [],
-      stockAlerts: [],
-      performanceAlerts: [
-        {
-          type: "warning",
-          message: "High refund rate: 100.0%",
-          priority: "medium"
-        }
-      ],
-      todayPerformance: "needs_attention",
-    },
-    insights: {
-      recommendations: [],
-      opportunities: [],
-      trends: {
-        paymentTrend: {
-          cash: { trend: 25, direction: "increasing" as const },
-          upi: { trend: 0, direction: "stable" as const },
-          card: { trend: 0, direction: "stable" as const },
-          qr: { trend: 50, direction: "increasing" as const },
-        },
-        channelTrend: { onlineGrowth: 0, offlineGrowth: 0 },
-      },
-    },
-  };
-  
-  return fallbackData;
+// Payment Method Pie Chart
+const PaymentMethodPieChart = ({ data }: { data: any[] }) => {
+  if (!data || data.length === 0) {
+    return (
+      <div className="h-64 flex items-center justify-center">
+        <p className="text-muted-foreground">No payment data available</p>
+      </div>
+    );
+  }
+
+  const chartData = data
+    .filter(item => item.percentage > 0)
+    .map(item => ({
+      name: formatPaymentMethod(item.method),
+      value: item.percentage,
+      amount: item.amount,
+      color: CHART_COLORS.paymentMethods[item.method as keyof typeof CHART_COLORS.paymentMethods] || CHART_COLORS.paymentMethods.other
+    }));
+
+  return (
+    <div className="h-80">
+      <ResponsiveContainer width="100%" height="100%">
+        <PieChart>
+          <Pie
+            data={chartData}
+            cx="50%"
+            cy="50%"
+            labelLine={true}
+            label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(1)}%`}
+            outerRadius={100}
+            innerRadius={50}
+            fill="#8884d8"
+            dataKey="value"
+            nameKey="name"
+            paddingAngle={2}
+          >
+            {chartData.map((entry, index) => (
+              <Cell key={`cell-${index}`} fill={entry.color} stroke="rgba(0,0,0,0.3)" strokeWidth={1} />
+            ))}
+          </Pie>
+          <RechartsTooltip
+            contentStyle={{ 
+              backgroundColor: 'rgba(17, 24, 39, 0.9)',
+              border: '1px solid #374151',
+              borderRadius: '8px',
+              backdropFilter: 'blur(10px)'
+            }}
+            formatter={(value, name, props) => {
+              const item = chartData.find(d => d.name === name);
+              return [
+                <div key="tooltip-content">
+                  <p className="font-medium">{name}</p>
+                  <p className="text-sm">{formatPercentage(value)}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Amount: {formatCurrency(item?.amount || 0)}
+                  </p>
+                </div>
+              ];
+            }}
+          />
+          <Legend 
+            layout="vertical" 
+            verticalAlign="middle" 
+            align="right"
+            formatter={(value, entry) => (
+              <span style={{ color: entry.color }}>
+                {value}
+              </span>
+            )}
+          />
+        </PieChart>
+      </ResponsiveContainer>
+    </div>
+  );
 };
 
+// Channel Comparison Chart
+const ChannelComparisonChart = ({ 
+  onlinePercentage, 
+  offlinePercentage, 
+  channelSplit 
+}: { 
+  onlinePercentage: number; 
+  offlinePercentage: number; 
+  channelSplit: any[] 
+}) => {
+  const chartData = [
+    {
+      name: 'Channel Distribution',
+      online: onlinePercentage,
+      offline: offlinePercentage,
+      onlineAmount: channelSplit.find(c => c.channel === 'online')?.amount || 0,
+      offlineAmount: channelSplit.find(c => c.channel === 'offline')?.amount || 0,
+    }
+  ];
+
+  return (
+    <div className="h-64">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={chartData} layout="vertical" margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+          <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#374151" opacity={0.2} />
+          <XAxis type="number" domain={[0, 100]} tickFormatter={(value) => `${value}%`} />
+          <YAxis type="category" dataKey="name" hide />
+          <RechartsTooltip
+            contentStyle={{ 
+              backgroundColor: 'rgba(17, 24, 39, 0.9)',
+              border: '1px solid #374151',
+              borderRadius: '8px',
+              backdropFilter: 'blur(10px)'
+            }}
+            formatter={(value, name) => {
+              const isOnline = name === 'online';
+              const amount = isOnline ? chartData[0].onlineAmount : chartData[0].offlineAmount;
+              return [
+                <div key="tooltip-content">
+                  <p className="font-medium">{isOnline ? 'Online' : 'Offline'}</p>
+                  <p className="text-sm">{value}%</p>
+                  <p className="text-xs text-muted-foreground">
+                    Amount: {formatCurrency(amount)}
+                  </p>
+                </div>
+              ];
+            }}
+          />
+          <Legend />
+          <Bar 
+            dataKey="online" 
+            fill={CHART_COLORS.channels.online} 
+            name="Online" 
+            radius={[0, 8, 8, 0]}
+            maxBarSize={80}
+          />
+          <Bar 
+            dataKey="offline" 
+            fill={CHART_COLORS.channels.offline} 
+            name="Offline" 
+            radius={[0, 8, 8, 0]}
+            maxBarSize={80}
+          />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+};
+
+// Hourly Sales Chart
+const HourlySalesChart = ({ data }: { data: any[] }) => {
+  if (!data || data.length === 0) {
+    return (
+      <div className="h-64 flex items-center justify-center">
+        <p className="text-muted-foreground">No hourly data available</p>
+      </div>
+    );
+  }
+
+  const chartData = data.map(item => ({
+    hour: item.hour,
+    sales: item.sales,
+    orders: item.orders,
+    netSales: item.netSales,
+  }));
+
+  return (
+    <div className="h-80">
+      <ResponsiveContainer width="100%" height="100%">
+        <RechartsLineChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.2} />
+          <XAxis 
+            dataKey="hour" 
+            stroke="#9ca3af" 
+            fontSize={12}
+            tickLine={false}
+            axisLine={false}
+          />
+          <YAxis 
+            stroke="#9ca3af" 
+            fontSize={12}
+            tickLine={false}
+            axisLine={false}
+            tickFormatter={(value) => `$${value}`}
+          />
+          <RechartsTooltip
+            contentStyle={{ 
+              backgroundColor: 'rgba(17, 24, 39, 0.9)',
+              border: '1px solid #374151',
+              borderRadius: '8px',
+              backdropFilter: 'blur(10px)'
+            }}
+            formatter={(value, name) => [
+              formatCurrency(value), 
+              name === 'sales' ? 'Sales' : 
+              name === 'netSales' ? 'Net Sales' : 
+              name === 'orders' ? 'Orders' : name
+            ]}
+          />
+          <Legend />
+          <Line
+            type="monotone"
+            dataKey="sales"
+            stroke="#3b82f6"
+            strokeWidth={3}
+            name="Total Sales"
+            dot={{ stroke: '#3b82f6', strokeWidth: 2, r: 4 }}
+            activeDot={{ r: 6, strokeWidth: 2 }}
+          />
+          <Line
+            type="monotone"
+            dataKey="netSales"
+            stroke="#10b981"
+            strokeWidth={3}
+            name="Net Sales"
+            strokeDasharray="5 5"
+            dot={{ stroke: '#10b981', strokeWidth: 2, r: 4 }}
+          />
+          <Line
+            type="monotone"
+            dataKey="orders"
+            stroke="#ec4899"
+            strokeWidth={2}
+            name="Orders"
+            dot={{ stroke: '#ec4899', strokeWidth: 2, r: 3 }}
+          />
+        </RechartsLineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+};
+
+// Performance Radar Chart
+const PerformanceRadarChart = ({ data }: { data: any[] }) => {
+  if (!data || data.length < 3) {
+    return (
+      <div className="h-64 flex items-center justify-center">
+        <p className="text-muted-foreground">Insufficient data for performance chart</p>
+      </div>
+    );
+  }
+
+  // Take last 4 periods for comparison
+  const recentData = data.slice(-4);
+  const chartData = recentData.map((item, index) => ({
+    subject: item.period,
+    Revenue: item.totalSales / 1000, // Scale down for better visualization
+    Orders: item.orderCount,
+    'Avg Order': item.avgOrderValue,
+    fullMark: Math.max(
+      ...recentData.map(d => Math.max(d.totalSales/1000, d.orderCount, d.avgOrderValue))
+    ),
+  }));
+
+  return (
+    <div className="h-80">
+      <ResponsiveContainer width="100%" height="100%">
+        <RadarChart cx="50%" cy="50%" outerRadius="80%" data={chartData}>
+          <PolarGrid stroke="#374151" opacity={0.3} />
+          <PolarAngleAxis dataKey="subject" stroke="#9ca3af" fontSize={12} />
+          <PolarRadiusAxis angle={30} domain={[0, 'dataMax']} stroke="#9ca3af" />
+          <RechartsTooltip
+            contentStyle={{ 
+              backgroundColor: 'rgba(17, 24, 39, 0.9)',
+              border: '1px solid #374151',
+              borderRadius: '8px',
+              backdropFilter: 'blur(10px)'
+            }}
+            formatter={(value, name) => [
+              name === 'Revenue' ? formatCurrency(value * 1000) :
+              name === 'Avg Order' ? formatCurrency(value) :
+              value,
+              name
+            ]}
+          />
+          <Radar
+            name="Revenue (in thousands)"
+            dataKey="Revenue"
+            stroke="#8884d8"
+            fill="#8884d8"
+            fillOpacity={0.6}
+            strokeWidth={2}
+          />
+          <Radar
+            name="Order Count"
+            dataKey="Orders"
+            stroke="#10b981"
+            fill="#10b981"
+            fillOpacity={0.6}
+            strokeWidth={2}
+          />
+          <Radar
+            name="Average Order Value"
+            dataKey="Avg Order"
+            stroke="#ec4899"
+            fill="#ec4899"
+            fillOpacity={0.6}
+            strokeWidth={2}
+          />
+          <Legend />
+        </RadarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+};
+
+// Revenue vs Orders Comparison Chart
+const RevenueOrdersChart = ({ data }: { data: any[] }) => {
+  if (!data || data.length === 0) {
+    return (
+      <div className="h-64 flex items-center justify-center">
+        <p className="text-muted-foreground">No data available</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-72">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={data.slice(-7)}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.2} />
+          <XAxis dataKey="period" stroke="#9ca3af" fontSize={12} />
+          <YAxis yAxisId="left" stroke="#9ca3af" fontSize={12} />
+          <YAxis yAxisId="right" orientation="right" stroke="#9ca3af" fontSize={12} />
+          <RechartsTooltip
+            contentStyle={{ 
+              backgroundColor: 'rgba(17, 24, 39, 0.9)',
+              border: '1px solid #374151',
+              borderRadius: '8px'
+            }}
+            formatter={(value, name) => [
+              name === 'Revenue' ? formatCurrency(value) : value,
+              name
+            ]}
+          />
+          <Legend />
+          <Bar yAxisId="left" dataKey="totalSales" fill="#8884d8" name="Revenue" radius={[4, 4, 0, 0]} />
+          <Bar yAxisId="right" dataKey="orderCount" fill="#10b981" name="Orders" radius={[4, 4, 0, 0]} />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+};
+
+// Main ReportView Component
 export default function ReportView() {
   const [activeTab, setActiveTab] = useState("overview");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [dashboardData, setDashboardData] = useState<DashboardData>(
-    generateFallbackDashboard()
-  );
-  const [isDemoMode, setIsDemoMode] = useState(false);
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [dateRange, setDateRange] = useState<{ start: Date; end: Date }>({
-    start: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+    start: subDays(new Date(), 7),
     end: new Date(),
   });
+  const [reportData, setReportData] = useState<any>(null);
+  const [reportType, setReportType] = useState<string>("daily-sales");
+  const [exportLoading, setExportLoading] = useState(false);
 
-  // Debug effect
-  useEffect(() => {
-    console.log("Dashboard data:", dashboardData);
-    console.log("Today's stats:", dashboardData.overview.today);
-    console.log("Payment split:", dashboardData.analytics.paymentSplit);
-    console.log("Sales trend data:", dashboardData.analytics.salesTrend);
-    console.log("Top products:", dashboardData.analytics.topProducts);
-    console.log("Is demo mode:", isDemoMode);
-    console.log("Has token:", !!localStorage.getItem("token"));
-  }, [dashboardData, isDemoMode]);
-
+  // Fetch dashboard data on mount
   useEffect(() => {
     fetchDashboardData();
   }, []);
 
+  // Fetch specific report data when date or date range changes
   useEffect(() => {
-    // Only refetch if the active tab is one that depends on the date range
-    if (activeTab === "analytics" || activeTab === "reports") {
-      fetchDashboardData();
+    if (activeTab === "reports") {
+      fetchSpecificReport();
     }
-  }, [dateRange, selectedDate, activeTab]);
+  }, [selectedDate, dateRange, reportType, activeTab]);
 
   const fetchDashboardData = async () => {
     try {
@@ -326,350 +544,206 @@ export default function ReportView() {
       // Check if user is authenticated
       const token = localStorage.getItem("token");
       if (!token) {
-        console.log("[ReportView] No token found, using demo mode");
-        setIsDemoMode(true);
-        setDashboardData(generateFallbackDashboard());
+        setError("Authentication required. Please login.");
         setLoading(false);
         return;
       }
 
-      try {
-        // Use the centralized API utility
-        const data = await api.reports.getDashboard();
-        if (data) {
-          console.log("[ReportView] API data received:", data);
-          
-          // Transform the API data to match our DashboardData interface
-          let transformedData: DashboardData = {
-            overview: {
-              today: {
-                revenue: data.overview?.today?.revenue || 0,
-                orders: data.overview?.today?.orders || 0,
-                avgOrder: data.overview?.today?.avgOrder || 0,
-                totalItems: data.overview?.today?.totalItems || 0,
-                netRevenue: data.overview?.today?.netRevenue || 0,
-              },
-              inventory: {
-                totalValue: data.overview?.inventory?.totalValue || 0,
-                lowStockItems: data.overview?.inventory?.lowStockItems || 0,
-                outOfStock: data.overview?.inventory?.outOfStock || 0,
-                healthyStock: data.overview?.inventory?.healthyStock || 0,
-              },
-              payment: {
-                topMethod: (data.overview?.payment?.topMethod as PaymentMethod) || "card",
-                cashPercentage: data.overview?.payment?.cashPercentage || 0,
-                upiPercentage: data.overview?.payment?.upiPercentage || 0,
-                cardPercentage: data.overview?.payment?.cardPercentage || 0,
-                walletPercentage: data.overview?.payment?.walletPercentage || 0,
-                qrPercentage: data.overview?.payment?.qrPercentage || 0,
-                digitalAdoption: data.overview?.payment?.digitalAdoption || 0,
-              },
-              channels: {
-                onlinePercentage: data.overview?.channels?.onlinePercentage || 0,
-                offlinePercentage: data.overview?.channels?.offlinePercentage || 0,
-                dominantChannel: (data.overview?.channels?.dominantChannel as ChannelType) || "online",
-              },
-            },
-            analytics: {
-              paymentSplit: data.analytics?.paymentSplit?.map((item: any) => ({
-                method: item.method,
-                count: item.count || 0,
-                amount: item.amount || 0,
-                // Use amountPercentage if percentage is not available
-                percentage: item.percentage || Math.abs(item.amountPercentage) || 0,
-              })) || [],
-              channelSplit: data.analytics?.channelSplit?.map((item: any) => ({
-                channel: item.channel,
-                count: item.count || 0,
-                amount: item.amount || 0,
-                percentage: item.percentage || 0,
-                avgOrderValue: item.avgOrderValue || 0,
-              })) || [],
-              hourlyBreakdown: data.analytics?.hourlyBreakdown?.map((item: any) => ({
-                hour: item.hour,
-                sales: item.sales || 0,
-                orders: item.orders || 0,
-                refunds: item.refunds || 0,
-                netSales: item.netSales || 0,
-                dominantPaymentMethod: item.dominantPaymentMethod || "cash",
-                onlinePercentage: item.onlinePercentage || 0,
-              })) || [],
-              salesTrend: data.analytics?.salesTrend?.map((item: any, index: number) => {
-                // Debug each sales trend item
-                console.log(`Processing sales trend item ${index}:`, item);
-                
-                // Extract week number from "2025-W51" format
-                let period = item.period || `Week ${index + 1}`;
-                const weekMatch = period.match(/W(\d+)$/);
-                if (weekMatch) {
-                  period = `Week ${weekMatch[1]}`;
-                }
-                
-                return {
-                  period: period,
-                  // Use netSales as totalSales if available
-                  totalSales: item.netSales || item.totalSales || 0,
-                  orderCount: item.orders || item.orderCount || 0,
-                  avgOrderValue: item.avgOrderValue || 0,
-                };
-              }) || [],
-              topProducts: data.analytics?.topProducts?.map((item: any) => ({
-                name: item.name || "Unknown Product",
-                quantity: item.quantity || 0,
-                revenue: item.revenue || 0,
-              })) || [],
-            },
-            alerts: {
-              critical: data.alerts?.critical?.map((item: any) => ({
-                name: item.name || "Unknown Item",
-                stock: item.stock || 0,
-                urgency: item.urgency || "medium",
-                suggestedReorderQty: item.suggestedReorderQty || 10,
-              })) || [],
-              stockAlerts: data.alerts?.stockAlerts || [],
-              performanceAlerts: data.alerts?.performanceAlerts || [],
-              todayPerformance: data.alerts?.todayPerformance || "good",
-            },
-            insights: {
-              recommendations: data.insights?.recommendations || [],
-              opportunities: data.insights?.opportunities || [],
-              trends: {
-                paymentTrend: {
-                  cash: data.insights?.trends?.paymentTrend?.cash || { trend: 0, direction: "stable" },
-                  upi: data.insights?.trends?.paymentTrend?.upi || { trend: 0, direction: "stable" },
-                  card: data.insights?.trends?.paymentTrend?.card || { trend: 0, direction: "stable" },
-                  qr: data.insights?.trends?.paymentTrend?.qr || { trend: 0, direction: "stable" },
-                },
-                channelTrend: data.insights?.trends?.channelTrend || { onlineGrowth: 0, offlineGrowth: 0 },
-              },
-            },
-          };
-          
-          console.log("Transformed sales trend:", transformedData.analytics.salesTrend);
-          console.log("Transformed top products:", transformedData.analytics.topProducts);
-          console.log("Transformed payment split:", transformedData.analytics.paymentSplit);
-          
-          // FIX: Calculate today's stats from payment split if they're 0
-          if (transformedData.overview.today.orders === 0 && transformedData.analytics.paymentSplit.length > 0) {
-            console.log("Calculating today's stats from payment split...");
-            const calculatedStats = calculateTodayStats(transformedData);
-            transformedData = {
-              ...transformedData,
-              overview: {
-                ...transformedData.overview,
-                today: calculatedStats
-              }
-            };
-            
-            // Also update payment overview if needed
-            if (!transformedData.overview.payment.topMethod && transformedData.analytics.paymentSplit.length > 0) {
-              const topMethod = transformedData.analytics.paymentSplit.sort((a: any, b: any) => b.amount - a.amount)[0]?.method || "cash";
-              transformedData.overview.payment.topMethod = topMethod as PaymentMethod;
-            }
-          }
-          
-          setDashboardData(transformedData);
-          setIsDemoMode(false);
-        } else {
-          throw new Error("No data returned from API");
-        }
-      } catch (apiError) {
-        console.error("[ReportView] API Error:", apiError);
+      // Use the centralized API utility
+      const data = await api.reports.getDashboard();
+      if (data) {
+        console.log("[ReportView] API data received:", data);
         
-        // Try alternative endpoint as fallback
-        try {
-          const response = await fetch(`${API_BASE}/reports/dashboard`, {
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
+        // Transform the API data to match our DashboardData interface
+        const transformedData: DashboardData = {
+          overview: {
+            today: {
+              revenue: data.overview?.today?.revenue || 0,
+              orders: data.overview?.today?.orders || 0,
+              avgOrder: data.overview?.today?.avgOrder || 0,
+              totalItems: data.overview?.today?.totalItems || 0,
+              netRevenue: data.overview?.today?.netRevenue || 0,
             },
-          });
-
-          if (response.ok) {
-            const result = await response.json();
-            const data = result.data || result;
-            console.log("[ReportView] Fallback data received:", data);
-            
-            // Transform the data
-            let transformedData: DashboardData = {
-              overview: {
-                today: {
-                  revenue: data.overview?.today?.revenue || 0,
-                  orders: data.overview?.today?.orders || 0,
-                  avgOrder: data.overview?.today?.avgOrder || 0,
-                  totalItems: data.overview?.today?.totalItems || 0,
-                  netRevenue: data.overview?.today?.netRevenue || 0,
-                },
-                inventory: {
-                  totalValue: data.overview?.inventory?.totalValue || 0,
-                  lowStockItems: data.overview?.inventory?.lowStockItems || 0,
-                  outOfStock: data.overview?.inventory?.outOfStock || 0,
-                  healthyStock: data.overview?.inventory?.healthyStock || 0,
-                },
-                payment: {
-                  topMethod: (data.overview?.payment?.topMethod as PaymentMethod) || "card",
-                  cashPercentage: data.overview?.payment?.cashPercentage || 0,
-                  upiPercentage: data.overview?.payment?.upiPercentage || 0,
-                  cardPercentage: data.overview?.payment?.cardPercentage || 0,
-                  walletPercentage: data.overview?.payment?.walletPercentage || 0,
-                  qrPercentage: data.overview?.payment?.qrPercentage || 0,
-                  digitalAdoption: data.overview?.payment?.digitalAdoption || 0,
-                },
-                channels: {
-                  onlinePercentage: data.overview?.channels?.onlinePercentage || 0,
-                  offlinePercentage: data.overview?.channels?.offlinePercentage || 0,
-                  dominantChannel: (data.overview?.channels?.dominantChannel as ChannelType) || "online",
-                },
-              },
-              analytics: {
-                paymentSplit: data.analytics?.paymentSplit?.map((item: any) => ({
-                  method: item.method,
-                  count: item.count || 0,
-                  amount: item.amount || 0,
-                  percentage: item.percentage || Math.abs(item.amountPercentage) || 0,
-                })) || [],
-                channelSplit: data.analytics?.channelSplit?.map((item: any) => ({
-                  channel: item.channel,
-                  count: item.count || 0,
-                  amount: item.amount || 0,
-                  percentage: item.percentage || 0,
-                  avgOrderValue: item.avgOrderValue || 0,
-                })) || [],
-                hourlyBreakdown: data.analytics?.hourlyBreakdown || [],
-                salesTrend: data.analytics?.salesTrend?.map((item: any, index: number) => {
-                  let period = item.period || `Week ${index + 1}`;
-                  const weekMatch = period.match(/W(\d+)$/);
-                  if (weekMatch) {
-                    period = `Week ${weekMatch[1]}`;
-                  }
-                  
-                  return {
-                    period: period,
-                    totalSales: item.netSales || item.totalSales || 0,
-                    orderCount: item.orders || item.orderCount || 0,
-                    avgOrderValue: item.avgOrderValue || 0,
-                  };
-                }) || [],
-                topProducts: data.analytics?.topProducts?.map((item: any) => ({
-                  name: item.name || "Unknown Product",
-                  quantity: item.quantity || 0,
-                  revenue: item.revenue || 0,
-                })) || [],
-              },
-              alerts: {
-                critical: data.alerts?.critical || [],
-                stockAlerts: data.alerts?.stockAlerts || [],
-                performanceAlerts: data.alerts?.performanceAlerts || [],
-                todayPerformance: data.alerts?.todayPerformance || "good",
-              },
-              insights: {
-                recommendations: data.insights?.recommendations || [],
-                opportunities: data.insights?.opportunities || [],
-                trends: {
-                  paymentTrend: data.insights?.trends?.paymentTrend || {
-                    cash: { trend: 0, direction: "stable" },
-                    upi: { trend: 0, direction: "stable" },
-                    card: { trend: 0, direction: "stable" },
-                    qr: { trend: 0, direction: "stable" },
-                  },
-                  channelTrend: data.insights?.trends?.channelTrend || { onlineGrowth: 0, offlineGrowth: 0 },
-                },
-              },
-            };
-            
-            console.log("Fallback transformed data:", transformedData);
-            
-            // Calculate today's stats from payment split if needed
-            if (transformedData.overview.today.orders === 0 && transformedData.analytics.paymentSplit.length > 0) {
-              const calculatedStats = calculateTodayStats(transformedData);
-              transformedData = {
-                ...transformedData,
-                overview: {
-                  ...transformedData.overview,
-                  today: calculatedStats
-                }
+            inventory: {
+              totalValue: data.overview?.inventory?.totalValue || 0,
+              lowStockItems: data.overview?.inventory?.lowStockItems || 0,
+              outOfStock: data.overview?.inventory?.outOfStock || 0,
+              healthyStock: data.overview?.inventory?.healthyStock || 0,
+            },
+            payment: {
+              topMethod: data.overview?.payment?.topMethod || "card",
+              cashPercentage: data.overview?.payment?.cashPercentage || 0,
+              upiPercentage: data.overview?.payment?.upiPercentage || 0,
+              cardPercentage: data.overview?.payment?.cardPercentage || 0,
+              walletPercentage: data.overview?.payment?.walletPercentage || 0,
+              qrPercentage: data.overview?.payment?.qrPercentage || 0,
+              digitalAdoption: data.overview?.payment?.digitalAdoption || 0,
+            },
+            channels: {
+              onlinePercentage: data.overview?.channels?.onlinePercentage || 0,
+              offlinePercentage: data.overview?.channels?.offlinePercentage || 0,
+              dominantChannel: data.overview?.channels?.dominantChannel || "online",
+            },
+          },
+          analytics: {
+            paymentSplit: data.analytics?.paymentSplit?.map((item: any) => ({
+              method: item.method,
+              count: item.count || 0,
+              amount: item.amount || 0,
+              percentage: item.percentage || Math.abs(item.amountPercentage) || 0,
+            })) || [],
+            channelSplit: data.analytics?.channelSplit?.map((item: any) => ({
+              channel: item.channel,
+              count: item.count || 0,
+              amount: item.amount || 0,
+              percentage: item.percentage || 0,
+              avgOrderValue: item.avgOrderValue || 0,
+            })) || [],
+            hourlyBreakdown: data.analytics?.hourlyBreakdown?.map((item: any) => ({
+              hour: item.hour,
+              sales: item.sales || 0,
+              orders: item.orders || 0,
+              refunds: item.refunds || 0,
+              netSales: item.netSales || 0,
+              dominantPaymentMethod: item.dominantPaymentMethod || "cash",
+              onlinePercentage: item.onlinePercentage || 0,
+            })) || [],
+            salesTrend: data.analytics?.salesTrend?.map((item: any, index: number) => {
+              let period = item.period || `Week ${index + 1}`;
+              const weekMatch = period.match(/W(\d+)$/);
+              if (weekMatch) {
+                period = `Week ${weekMatch[1]}`;
+              }
+              
+              return {
+                period: period,
+                totalSales: item.netSales || item.totalSales || 0,
+                orderCount: item.orders || item.orderCount || 0,
+                avgOrderValue: item.avgOrderValue || 0,
               };
-            }
-            
-            setDashboardData(transformedData);
-            setIsDemoMode(false);
-          } else {
-            throw new Error(`Dashboard API error: ${response.status}`);
-          }
-        } catch (fetchError) {
-          console.error("[ReportView] Fallback fetch error:", fetchError);
-          throw apiError; // Re-throw the original error
-        }
+            }) || [],
+            topProducts: data.analytics?.topProducts?.map((item: any) => ({
+              name: item.name || "Unknown Product",
+              quantity: item.quantity || 0,
+              revenue: item.revenue || 0,
+            })) || [],
+          },
+          alerts: {
+            critical: data.alerts?.critical?.map((item: any) => ({
+              name: item.name || "Unknown Item",
+              stock: item.stock || 0,
+              urgency: item.urgency || "medium",
+              suggestedReorderQty: item.suggestedReorderQty || 10,
+            })) || [],
+            stockAlerts: data.alerts?.stockAlerts || [],
+            performanceAlerts: data.alerts?.performanceAlerts || [],
+            todayPerformance: data.alerts?.todayPerformance || "good",
+          },
+          insights: {
+            recommendations: data.insights?.recommendations || [],
+            opportunities: data.insights?.opportunities || [],
+            trends: {
+              paymentTrend: {
+                cash: data.insights?.trends?.paymentTrend?.cash || { trend: 0, direction: "stable" },
+                upi: data.insights?.trends?.paymentTrend?.upi || { trend: 0, direction: "stable" },
+                card: data.insights?.trends?.paymentTrend?.card || { trend: 0, direction: "stable" },
+                qr: data.insights?.trends?.paymentTrend?.qr || { trend: 0, direction: "stable" },
+              },
+              channelTrend: data.insights?.trends?.channelTrend || { onlineGrowth: 0, offlineGrowth: 0 },
+            },
+          },
+        };
+        
+        setDashboardData(transformedData);
+      } else {
+        throw new Error("No data returned from API");
       }
     } catch (error) {
       console.error("[ReportView] Error fetching dashboard:", error);
-      const errorMessage = error instanceof Error ? error.message : "Failed to load dashboard";
+      const errorMessage = error instanceof Error ? error.message : "Failed to load dashboard data";
       setError(errorMessage);
-      
-      // Only use demo mode if it's an authentication or connection error
-      if (errorMessage.includes("token") || errorMessage.includes("network") || errorMessage.includes("Failed")) {
-        setIsDemoMode(true);
-        setDashboardData(generateFallbackDashboard());
-      }
+      setDashboardData(null);
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchReportData = async (type: string, params?: any) => {
+  const fetchSpecificReport = async () => {
     try {
       setLoading(true);
-
-      const token = localStorage.getItem("token");
-      if (!token) {
-        setIsDemoMode(true);
-        return null;
-      }
-
+      
       let response;
-      switch (type) {
+      const formattedDate = format(selectedDate, "yyyy-MM-dd");
+      const formattedStartDate = format(dateRange.start, "yyyy-MM-dd");
+      const formattedEndDate = format(dateRange.end, "yyyy-MM-dd");
+      
+      console.log(`[ReportView] Fetching ${reportType} report:`, {
+        date: formattedDate,
+        startDate: formattedStartDate,
+        endDate: formattedEndDate
+      });
+      
+      switch (reportType) {
         case "daily-sales":
-          response = await api.reports.getDailySales(params?.date);
+          response = await api.reports.getDailySales(formattedDate);
           break;
         case "payment-analytics":
-          response = await api.reports.getPaymentAnalytics(
-            params?.startDate,
-            params?.endDate
-          );
+          response = await api.reports.getPaymentAnalytics(formattedStartDate, formattedEndDate);
           break;
         case "channel-performance":
-          response = await api.reports.getChannelPerformance(
-            params?.startDate,
-            params?.endDate
-          );
+          response = await api.reports.getChannelPerformance(formattedStartDate, formattedEndDate);
           break;
         case "inventory":
-          response = await api.reports.getLowStock(params?.threshold);
+          response = await api.reports.getLowStock(10);
           break;
         case "sales-trend":
-          response = await api.reports.getSalesTrend(
-            params?.period,
-            params?.weeks
-          );
+          response = await api.reports.getSalesTrend("weekly", 8);
           break;
         case "inventory-valuation":
           response = await api.reports.getInventoryValuation();
           break;
         default:
-          return null;
+          response = await api.reports.getDailySales(formattedDate);
       }
-
-      return response;
+      
+      if (response) {
+        console.log(`[ReportView] ${reportType} report received:`, response);
+        setReportData(response);
+        setError(null);
+      } else {
+        setError("No report data available");
+        setReportData(null);
+      }
     } catch (error) {
-      console.error(`[ReportView] Error fetching ${type}:`, error);
-      return null;
+      console.error("[ReportView] Error fetching report:", error);
+      setError("Failed to fetch report data");
+      setReportData(null);
     } finally {
       setLoading(false);
     }
   };
 
+  const handleDateSelect = (date: Date | undefined) => {
+    if (date) {
+      setSelectedDate(date);
+      // Automatically fetch daily sales report for selected date
+      setReportType("daily-sales");
+      // Switch to reports tab to show the data
+      setActiveTab("reports");
+      
+      console.log("[ReportView] Date selected:", format(date, "yyyy-MM-dd"));
+    }
+  };
+
+  const handleReportTypeChange = (type: string) => {
+    setReportType(type);
+    console.log("[ReportView] Report type changed to:", type);
+  };
+
   const exportReport = async (type: string, format = "csv") => {
     try {
+      setExportLoading(true);
+      
       const token = localStorage.getItem("token");
       if (!token) {
         alert("Please login to export reports");
@@ -689,53 +763,307 @@ export default function ReportView() {
         };
       }
 
+      console.log("[ReportView] Exporting report:", { type, format, params });
+
       // Use the centralized API for export
       const data = await api.reports.exportReport(type, format, params);
       
       if (data && data.url) {
-        // If API returns a download URL
         window.open(data.url, '_blank');
+      } else if (data && data.data) {
+        // For CSV/Excel formats, create a download link
+        const blob = new Blob([data.data], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${type}-report-${Date.now()}.${format}`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
       } else {
-        // Fallback to direct download
-        const url =
-          `${API_BASE}/reports/export/${type}?format=${format}` +
-          (params.startDate ? `&startDate=${params.startDate}` : "") +
-          (params.endDate ? `&endDate=${params.endDate}` : "") +
-          (params.date ? `&date=${params.date}` : "");
-
-        const response = await fetch(url, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-
-        if (response.ok) {
-          const blob = await response.blob();
-          const downloadUrl = window.URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = downloadUrl;
-          a.download = `${type}-report-${Date.now()}.${format}`;
-          document.body.appendChild(a);
-          a.click();
-          window.URL.revokeObjectURL(downloadUrl);
-          document.body.removeChild(a);
-        }
+        setError("Export failed: No data returned");
       }
     } catch (error) {
       console.error("[ReportView] Export error:", error);
-      alert("Failed to export report");
+      setError("Failed to export report");
+    } finally {
+      setExportLoading(false);
     }
   };
 
-  // Calculate stats with fallback to payment split data
-  const todayStats = calculateTodayStats(dashboardData);
-  
+  const renderReportContent = () => {
+    if (!reportData) {
+      return (
+        <div className="h-96 flex items-center justify-center">
+          <div className="text-center">
+            <p className="text-muted-foreground mb-4">No report data available</p>
+            <p className="text-sm text-muted-foreground">
+              Select a date and report type to view data
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    switch (reportType) {
+      case "daily-sales":
+        return (
+          <div className="space-y-6">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm text-muted-foreground">Total Orders</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{reportData?.summary?.totalOrders || 0}</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm text-muted-foreground">Net Revenue</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{formatCurrency(reportData?.summary?.netRevenue || 0)}</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm text-muted-foreground">Avg Order Value</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{formatCurrency(reportData?.summary?.avgOrderValue || 0)}</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm text-muted-foreground">Total Items</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{reportData?.summary?.totalItems || 0}</div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {reportData.paymentInsights?.split && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Payment Method Distribution</CardTitle>
+                  <CardDescription>How customers paid on {format(selectedDate, "MMMM dd, yyyy")}</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="h-80">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={reportData.paymentInsights.split.filter((item: any) => item.percentage > 0)}
+                          cx="50%"
+                          cy="50%"
+                          labelLine={true}
+                          label={({ method, percentage }) => `${formatPaymentMethod(method)}: ${percentage.toFixed(1)}%`}
+                          outerRadius={100}
+                          fill="#8884d8"
+                          dataKey="percentage"
+                        >
+                          {reportData.paymentInsights.split.filter((item: any) => item.percentage > 0).map((entry: any, index: number) => (
+                            <Cell 
+                              key={`cell-${index}`} 
+                              fill={CHART_COLORS.paymentMethods[entry.method as keyof typeof CHART_COLORS.paymentMethods] || CHART_COLORS.paymentMethods.other} 
+                            />
+                          ))}
+                        </Pie>
+                        <RechartsTooltip
+                          formatter={(value, name, props) => {
+                            const item = reportData.paymentInsights.split.find((p: any) => p.method === props.payload.method);
+                            return [
+                              <div key="tooltip-content">
+                                <p className="font-medium">{formatPaymentMethod(props.payload.method)}</p>
+                                <p className="text-sm">{value}%</p>
+                                <p className="text-xs text-muted-foreground">
+                                  Amount: {formatCurrency(item?.amount || 0)}
+                                </p>
+                              </div>
+                            ];
+                          }}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {reportData.channelInsights?.split && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Channel Distribution</CardTitle>
+                  <CardDescription>Online vs Offline sales</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={reportData.channelInsights.split} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.2} />
+                        <XAxis dataKey="channel" tickFormatter={(value) => formatChannel(value)} />
+                        <YAxis />
+                        <RechartsTooltip
+                          formatter={(value, name, props) => [
+                            name === 'amount' ? formatCurrency(value) : value,
+                            name === 'amount' ? 'Amount' : name === 'count' ? 'Orders' : name
+                          ]}
+                        />
+                        <Bar dataKey="amount" fill="#8884d8" name="Revenue" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="count" fill="#10b981" name="Orders" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        );
+
+      case "payment-analytics":
+        return (
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Payment Analytics Summary</CardTitle>
+                <CardDescription>
+                  {format(dateRange.start, "MMM dd, yyyy")} - {format(dateRange.end, "MMM dd, yyyy")}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="border rounded-lg p-4">
+                    <p className="text-sm text-muted-foreground">Total Orders</p>
+                    <p className="text-2xl font-bold">{reportData?.summary?.totalOrders || 0}</p>
+                  </div>
+                  <div className="border rounded-lg p-4">
+                    <p className="text-sm text-muted-foreground">Net Revenue</p>
+                    <p className="text-2xl font-bold">{formatCurrency(reportData?.summary?.netRevenue || 0)}</p>
+                  </div>
+                  <div className="border rounded-lg p-4">
+                    <p className="text-sm text-muted-foreground">Refund Rate</p>
+                    <p className="text-2xl font-bold">{reportData?.summary?.refundRate?.toFixed(1) || 0}%</p>
+                  </div>
+                  <div className="border rounded-lg p-4">
+                    <p className="text-sm text-muted-foreground">Avg Order Value</p>
+                    <p className="text-2xl font-bold">{formatCurrency(reportData?.summary?.avgOrderValue || 0)}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {reportData.paymentSummary && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Payment Method Breakdown</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {Object.entries(reportData.paymentSummary).map(([method, data]: [string, any]) => (
+                      <div key={method} className="space-y-2">
+                        <div className="flex justify-between items-center">
+                          <span className="font-medium">{formatPaymentMethod(method)}</span>
+                          <span className="font-bold">{data.percentage?.toFixed(1) || 0}%</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div 
+                            className="h-2 rounded-full"
+                            style={{ 
+                              width: `${data.percentage || 0}%`,
+                              backgroundColor: CHART_COLORS.paymentMethods[method as keyof typeof CHART_COLORS.paymentMethods] || CHART_COLORS.paymentMethods.other
+                            }}
+                          />
+                        </div>
+                        <div className="flex justify-between text-sm text-muted-foreground">
+                          <span>Orders: {data.orders || 0}</span>
+                          <span>Revenue: {formatCurrency(data.netRevenue || 0)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        );
+
+      case "channel-performance":
+        return (
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Channel Performance Summary</CardTitle>
+                <CardDescription>
+                  {format(dateRange.start, "MMM dd, yyyy")} - {format(dateRange.end, "MMM dd, yyyy")}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="border rounded-lg p-4">
+                    <p className="text-sm text-muted-foreground">Total Orders</p>
+                    <p className="text-2xl font-bold">{reportData?.summary?.totalOrders || 0}</p>
+                  </div>
+                  <div className="border rounded-lg p-4">
+                    <p className="text-sm text-muted-foreground">Online %</p>
+                    <p className="text-2xl font-bold">{reportData?.summary?.onlinePercentage?.toFixed(1) || 0}%</p>
+                  </div>
+                  <div className="border rounded-lg p-4">
+                    <p className="text-sm text-muted-foreground">Online Growth</p>
+                    <p className="text-2xl font-bold">{reportData?.summary?.onlineGrowth?.toFixed(1) || 0}%</p>
+                  </div>
+                  <div className="border rounded-lg p-4">
+                    <p className="text-sm text-muted-foreground">Offline Growth</p>
+                    <p className="text-2xl font-bold">{reportData?.summary?.offlineGrowth?.toFixed(1) || 0}%</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        );
+
+      default:
+        return (
+          <Card>
+            <CardHeader>
+              <CardTitle>{reportType.replace("-", " ").toUpperCase()} Report</CardTitle>
+              <CardDescription>
+                {reportType === "daily-sales" 
+                  ? `Date: ${format(selectedDate, "MMMM dd, yyyy")}`
+                  : `Date Range: ${format(dateRange.start, "MMM dd, yyyy")} - ${format(dateRange.end, "MMM dd, yyyy")}`
+                }
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <pre className="text-sm bg-muted p-4 rounded-lg overflow-auto max-h-96">
+                  {JSON.stringify(reportData, null, 2)}
+                </pre>
+                <p className="text-sm text-muted-foreground">
+                  Raw report data for {reportType.replace("-", " ")}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        );
+    }
+  };
+
+  // Calculate stats from actual data or show 0 if no data
+  const todayStats = dashboardData?.overview?.today || {
+    revenue: 0,
+    orders: 0,
+    avgOrder: 0,
+    totalItems: 0,
+    netRevenue: 0
+  };
+
   const stats = [
     {
       title: "Today's Revenue",
       value: formatCurrency(todayStats.revenue),
-      change: todayStats.revenue > 500 ? "+12.5%" : "-5.2%",
-      trend: todayStats.revenue > 500 ? "up" : "down",
       icon: DollarSign,
       gradient: "from-purple-500 to-pink-600",
       iconBg: "bg-purple-500/10",
@@ -744,8 +1072,6 @@ export default function ReportView() {
     {
       title: "Orders Today",
       value: todayStats.orders,
-      change: todayStats.orders > 2 ? "+8.2%" : "-15.3%",
-      trend: todayStats.orders > 2 ? "up" : "down",
       icon: ShoppingCart,
       gradient: "from-blue-500 to-cyan-600",
       iconBg: "bg-blue-500/10",
@@ -753,11 +1079,7 @@ export default function ReportView() {
     },
     {
       title: "Inventory Value",
-      value: formatCurrency(
-        dashboardData?.overview?.inventory?.totalValue || 0
-      ),
-      change: dashboardData?.overview?.inventory?.totalValue > 4000 ? "+2.4%" : "-10.8%",
-      trend: dashboardData?.overview?.inventory?.totalValue > 4000 ? "up" : "down",
+      value: formatCurrency(dashboardData?.overview?.inventory?.totalValue || 0),
       icon: Package,
       gradient: "from-emerald-500 to-teal-600",
       iconBg: "bg-emerald-500/10",
@@ -766,14 +1088,6 @@ export default function ReportView() {
     {
       title: "Low Stock Items",
       value: dashboardData?.overview?.inventory?.lowStockItems || 0,
-      change:
-        (dashboardData?.overview?.inventory?.lowStockItems || 0) > 0
-          ? "Critical"
-          : "Normal",
-      trend:
-        (dashboardData?.overview?.inventory?.lowStockItems || 0) > 0
-          ? "warning"
-          : "up",
       icon: AlertTriangle,
       gradient: "from-amber-500 to-orange-600",
       iconBg: "bg-amber-500/10",
@@ -784,78 +1098,37 @@ export default function ReportView() {
   const paymentStats = [
     {
       title: "Top Payment Method",
-      value: formatPaymentMethod(
-        dashboardData?.overview?.payment?.topMethod || "card"
-      ),
+      value: formatPaymentMethod(dashboardData?.overview?.payment?.topMethod || "card"),
       icon: CreditCard,
       color: CHART_COLORS.paymentMethods.card,
       percentage: dashboardData?.overview?.payment?.cardPercentage || 0,
     },
     {
       title: "Digital Adoption",
-      value: formatPercentage(
-        dashboardData?.overview?.payment?.digitalAdoption || 0
-      ),
+      value: formatPercentage(dashboardData?.overview?.payment?.digitalAdoption || 0),
       icon: CreditCard,
-      color: CHART_COLORS.sales[1], // Blue
+      color: "#3b82f6",
       percentage: dashboardData?.overview?.payment?.digitalAdoption || 0,
     },
     {
       title: "Online Orders",
-      value: formatPercentage(
-        dashboardData?.overview?.channels?.onlinePercentage || 0
-      ),
+      value: formatPercentage(dashboardData?.overview?.channels?.onlinePercentage || 0),
       icon: Globe,
       color: CHART_COLORS.channels.online,
       percentage: dashboardData?.overview?.channels?.onlinePercentage || 0,
     },
     {
       title: "Dominant Channel",
-      value: formatChannel(
-        dashboardData?.overview?.channels?.dominantChannel || "online"
-      ),
+      value: formatChannel(dashboardData?.overview?.channels?.dominantChannel || "online"),
       icon: Globe,
       color: CHART_COLORS.channels.online,
-      percentage:
-        dashboardData?.overview?.channels?.dominantChannel === "online"
-          ? dashboardData?.overview?.channels?.onlinePercentage || 0
-          : 100 - (dashboardData?.overview?.channels?.onlinePercentage || 0),
+      percentage: dashboardData?.overview?.channels?.dominantChannel === "online"
+        ? dashboardData?.overview?.channels?.onlinePercentage || 0
+        : 100 - (dashboardData?.overview?.channels?.onlinePercentage || 0),
     },
   ];
 
-  // Performance indicators
-  const performanceIndicators = [
-    {
-      title: "Average Order Value",
-      value: formatCurrency(todayStats.avgOrder),
-      icon: DollarSign,
-      color: "text-purple-600",
-      bgColor: "bg-purple-100",
-    },
-    {
-      title: "Total Items Sold",
-      value: todayStats.totalItems,
-      icon: Package,
-      color: "text-blue-600",
-      bgColor: "bg-blue-100",
-    },
-    {
-      title: "Gross Margin",
-      value: formatPercentage(41.96), // From your API data
-      icon: TrendingUp,
-      color: "text-emerald-600",
-      bgColor: "bg-emerald-100",
-    },
-    {
-      title: "Customer Repeat Rate",
-      value: formatPercentage(70), // From your API data
-      icon: Users,
-      color: "text-pink-600",
-      bgColor: "bg-pink-100",
-    },
-  ];
-
-  if (loading) {
+  if (loading && !reportData) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <motion.div
@@ -882,6 +1155,33 @@ export default function ReportView() {
           >
             Loading analytics dashboard...
           </motion.p>
+        </motion.div>
+      </div>
+    );
+  }
+
+  if (error || !dashboardData) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="max-w-md w-full text-center"
+        >
+          <AlertTriangle className="w-16 h-16 text-red-500 mx-auto mb-6" />
+          <h2 className="text-2xl font-bold mb-4">Unable to Load Dashboard</h2>
+          <p className="text-muted-foreground mb-6">
+            {error || "No data available. Please check your connection and try again."}
+          </p>
+          <div className="flex gap-4 justify-center">
+            <Button onClick={fetchDashboardData} variant="default">
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Retry
+            </Button>
+            <Button variant="outline" onClick={() => window.location.href = '/login'}>
+              Login
+            </Button>
+          </div>
         </motion.div>
       </div>
     );
@@ -916,11 +1216,9 @@ export default function ReportView() {
                 <p className="text-sm text-muted-foreground flex items-center gap-2">
                   <Sparkles className="w-3 h-3" />
                   Real-time business insights and reports
-                  {dashboardData?.overview?.today && (
-                    <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-full">
-                      Today: {format(new Date(), "MMM dd, yyyy")}
-                    </span>
-                  )}
+                  <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-full">
+                    Today: {format(new Date(), "MMM dd, yyyy")}
+                  </span>
                 </p>
               </div>
             </motion.div>
@@ -931,6 +1229,27 @@ export default function ReportView() {
               transition={{ delay: 0.3, duration: 0.5 }}
             >
               <div className="flex items-center gap-2">
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className="rounded-xl justify-start text-left font-normal bg-transparent"
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {format(selectedDate, "MMM dd, yyyy")}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="end">
+                    <Calendar
+                      mode="single"
+                      selected={selectedDate}
+                      onSelect={handleDateSelect}
+                      initialFocus
+                      className="rounded-md border"
+                    />
+                  </PopoverContent>
+                </Popover>
+                
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button
@@ -970,26 +1289,15 @@ export default function ReportView() {
                   </PopoverContent>
                 </Popover>
               </div>
-              <AnimatePresence>
-                {isDemoMode && (
-                  <motion.div
-                    initial={{ scale: 0, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    exit={{ scale: 0, opacity: 0 }}
-                    className="text-sm font-medium text-blue-600 bg-blue-500/10 px-4 py-2 rounded-xl border border-blue-500/20 flex items-center gap-2"
-                  >
-                    <Sparkles className="w-4 h-4" />
-                    Demo Mode
-                  </motion.div>
-                )}
-              </AnimatePresence>
               <div className="flex gap-2">
                 <Button
                   onClick={() => exportReport("daily-sales", "csv")}
                   variant="outline"
                   size="sm"
                   className="rounded-xl"
+                  disabled={exportLoading}
                 >
+                  {exportLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
                   Export CSV
                 </Button>
                 <Button
@@ -1052,26 +1360,6 @@ export default function ReportView() {
                   >
                     {stat.value}
                   </motion.p>
-                  <div
-                    className={`flex items-center gap-1 text-sm font-medium ${
-                      stat.trend === "up"
-                        ? "text-emerald-600"
-                        : stat.trend === "down"
-                        ? "text-red-600"
-                        : "text-amber-600"
-                    }`}
-                  >
-                    {stat.trend === "up" && (
-                      <ArrowUpRight className="w-4 h-4" />
-                    )}
-                    {stat.trend === "down" && (
-                      <ArrowDownRight className="w-4 h-4" />
-                    )}
-                    {stat.trend === "warning" && (
-                      <AlertTriangle className="w-4 h-4" />
-                    )}
-                    <span>{stat.change}</span>
-                  </div>
                 </CardContent>
               </Card>
             </motion.div>
@@ -1140,178 +1428,7 @@ export default function ReportView() {
           ))}
         </div>
 
-        {/* Performance Indicators */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {performanceIndicators.map((indicator, idx) => (
-            <motion.div
-              key={indicator.title}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.6 + idx * 0.1, duration: 0.5 }}
-            >
-              <Card className="border-border/40 hover:shadow-lg transition-shadow">
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-muted-foreground font-medium">
-                        {indicator.title}
-                      </p>
-                      <p className="text-2xl font-bold mt-2">{indicator.value}</p>
-                    </div>
-                    <div className={`${indicator.bgColor} p-3 rounded-xl`}>
-                      <indicator.icon className={`w-6 h-6 ${indicator.color}`} />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-          ))}
-        </div>
-
-        {/* Alerts Section */}
-        {(dashboardData?.alerts?.critical?.length || 0) > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.8, duration: 0.5 }}
-          >
-            <Card className="border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-900">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-red-600 dark:text-red-400">
-                  <AlertTriangle className="w-5 h-5" />
-                  Critical Alerts
-                  <span className="text-xs bg-red-500/20 text-red-600 px-2 py-1 rounded-full">
-                    {dashboardData.alerts?.critical?.length || 0} items
-                  </span>
-                </CardTitle>
-                <CardDescription>
-                  Immediate attention required for these items
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {dashboardData.alerts?.critical
-                    ?.slice(0, 3)
-                    .map((alert: any, idx: number) => (
-                      <motion.div
-                        key={idx}
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: idx * 0.1 }}
-                        className="flex items-center justify-between p-4 bg-white dark:bg-gray-900 rounded-lg border border-red-200 dark:border-red-800 shadow-sm"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className={`p-2 rounded-lg ${
-                            alert.urgency === 'critical' ? 'bg-red-100 text-red-600' :
-                            alert.urgency === 'high' ? 'bg-orange-100 text-orange-600' :
-                            'bg-yellow-100 text-yellow-600'
-                          }`}>
-                            <AlertCircle className="w-5 h-5" />
-                          </div>
-                          <div>
-                            <p className="font-semibold">{alert.name}</p>
-                            <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                              <span className="flex items-center gap-1">
-                                <Package className="w-3 h-3" />
-                                Stock: {alert.stock}
-                              </span>
-                              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                                alert.urgency === 'critical' ? 'bg-red-100 text-red-700' :
-                                alert.urgency === 'high' ? 'bg-orange-100 text-orange-700' :
-                                'bg-yellow-100 text-yellow-700'
-                              }`}>
-                                {alert.urgency}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <div className="text-right">
-                            <p className="text-sm text-muted-foreground">Reorder Qty</p>
-                            <p className="font-semibold">{alert.suggestedReorderQty}</p>
-                          </div>
-                          <Button size="sm" variant="destructive" className="rounded-lg">
-                            Reorder Now
-                          </Button>
-                        </div>
-                      </motion.div>
-                    ))}
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        )}
-
-        {/* Recommendations */}
-        {(dashboardData?.insights?.recommendations?.length || 0) > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.9, duration: 0.5 }}
-          >
-            <Card className="border-blue-200 bg-blue-50 dark:bg-blue-950/20 dark:border-blue-900">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
-                  <Sparkles className="w-5 h-5" />
-                  Recommendations
-                </CardTitle>
-                <CardDescription>
-                  Actionable insights to improve your business
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {dashboardData.insights?.recommendations
-                    ?.slice(0, 3)
-                    .map((rec: any, idx: number) => (
-                      <motion.div
-                        key={idx}
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: idx * 0.1 }}
-                        className="flex items-start gap-3 p-4 bg-white dark:bg-gray-900 rounded-lg border border-blue-200 dark:border-blue-800"
-                      >
-                        <div className={`p-2 rounded-lg ${
-                          rec.priority === 'high' ? 'bg-red-100 text-red-600' :
-                          rec.priority === 'medium' ? 'bg-yellow-100 text-yellow-600' :
-                          'bg-green-100 text-green-600'
-                        }`}>
-                          {rec.priority === 'high' ? <AlertTriangle className="w-5 h-5" /> :
-                           rec.priority === 'medium' ? <AlertCircle className="w-5 h-5" /> :
-                           <Sparkles className="w-5 h-5" />}
-                        </div>
-                        <div className="flex-1">
-                          <div className="flex items-center justify-between">
-                            <p className="font-semibold">{rec.action}</p>
-                            <span className={`text-xs px-2 py-1 rounded-full ${
-                              rec.priority === 'high' ? 'bg-red-100 text-red-700' :
-                              rec.priority === 'medium' ? 'bg-yellow-100 text-yellow-700' :
-                              'bg-green-100 text-green-700'
-                            }`}>
-                              {rec.priority}
-                            </span>
-                          </div>
-                          <p className="text-sm text-muted-foreground mt-1">{rec.expectedImpact}</p>
-                          <div className="flex items-center gap-4 mt-2 text-sm">
-                            <span className="flex items-center gap-1">
-                              <Tag className="w-3 h-3" />
-                              {rec.type}
-                            </span>
-                            <span className="flex items-center gap-1">
-                              <CalendarIcon className="w-3 h-3" />
-                              Timeline: {rec.timeline}
-                            </span>
-                          </div>
-                        </div>
-                      </motion.div>
-                    ))}
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        )}
-
-        {/* Analytics Tabs - Simplified without graphs */}
+        {/* Analytics Tabs */}
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
@@ -1353,7 +1470,7 @@ export default function ReportView() {
               </TabsTrigger>
             </TabsList>
 
-            {/* Overview Tab - Simplified */}
+            {/* Overview Tab */}
             <TabsContent value="overview" className="space-y-6">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <motion.div
@@ -1500,370 +1617,602 @@ export default function ReportView() {
               </motion.div>
             </TabsContent>
 
-            {/* Sales Tab - Simplified */}
-            <TabsContent value="sales" className="space-y-6">
+            {/* Sales Tab */}
+            <TabsContent value="sales" className="space-y-8">
               <motion.div
                 initial={{ opacity: 0, y: 30 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.8, duration: 0.5 }}
+                transition={{ delay: 0.2, duration: 0.5 }}
+              >
+                <Card className="border-border/50 hover:shadow-xl transition-shadow duration-300">
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle className="flex items-center gap-2">
+                          <Activity className="w-5 h-5 text-blue-500" />
+                          Sales Trend Analysis
+                        </CardTitle>
+                        <CardDescription>
+                          Revenue and order trends over time
+                        </CardDescription>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button variant="outline" size="sm" onClick={() => exportReport("sales-trend", "csv")}>
+                          <Download className="w-4 h-4 mr-2" />
+                          Export CSV
+                        </Button>
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => {
+                            setReportType("sales-trend");
+                            fetchSpecificReport();
+                          }}
+                        >
+                          <RefreshCw className="w-4 h-4 mr-2" />
+                          Refresh
+                        </Button>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <SalesTrendChart data={dashboardData.analytics.salesTrend} />
+                  </CardContent>
+                </Card>
+              </motion.div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <motion.div
+                  initial={{ opacity: 0, x: -30 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.3, duration: 0.5 }}
+                >
+                  <Card className="border-border/50 hover:shadow-xl transition-shadow duration-300">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <PieChartIcon className="w-5 h-5 text-purple-500" />
+                        Payment Method Distribution
+                      </CardTitle>
+                      <CardDescription>
+                        How customers prefer to pay
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <PaymentMethodPieChart data={dashboardData.analytics.paymentSplit} />
+                    </CardContent>
+                  </Card>
+                </motion.div>
+
+                <motion.div
+                  initial={{ opacity: 0, x: 30 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.4, duration: 0.5 }}
+                >
+                  <Card className="border-border/50 hover:shadow-xl transition-shadow duration-300">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Globe className="w-5 h-5 text-green-500" />
+                        Channel Performance
+                      </CardTitle>
+                      <CardDescription>
+                        Online vs. Offline sales comparison
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <ChannelComparisonChart
+                        onlinePercentage={dashboardData.overview.channels.onlinePercentage}
+                        offlinePercentage={dashboardData.overview.channels.offlinePercentage}
+                        channelSplit={dashboardData.analytics.channelSplit}
+                      />
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <motion.div
+                  initial={{ opacity: 0, y: 30 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.5, duration: 0.5 }}
+                >
+                  <Card className="border-border/50 hover:shadow-xl transition-shadow duration-300">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <BarChart2 className="w-5 h-5 text-amber-500" />
+                        Hourly Sales Pattern
+                      </CardTitle>
+                      <CardDescription>
+                        Sales distribution throughout the day
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <HourlySalesChart data={dashboardData.analytics.hourlyBreakdown} />
+                    </CardContent>
+                  </Card>
+                </motion.div>
+
+                <motion.div
+                  initial={{ opacity: 0, y: 30 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.6, duration: 0.5 }}
+                >
+                  <Card className="border-border/50 hover:shadow-xl transition-shadow duration-300">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Target className="w-5 h-5 text-pink-500" />
+                        Performance Metrics
+                      </CardTitle>
+                      <CardDescription>
+                        Multi-dimensional performance analysis
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <PerformanceRadarChart data={dashboardData.analytics.salesTrend} />
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              </div>
+
+              <motion.div
+                initial={{ opacity: 0, y: 30 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.7, duration: 0.5 }}
               >
                 <Card className="border-border/50 hover:shadow-xl transition-shadow duration-300">
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
-                      <DollarSign className="w-5 h-5 text-emerald-500" />
-                      Revenue & Orders Analysis
+                      <TrendingUp className="w-5 h-5 text-emerald-500" />
+                      Detailed Sales Statistics
                     </CardTitle>
                     <CardDescription>
-                      Weekly performance overview
+                      Comprehensive breakdown of sales metrics
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="space-y-6">
-                      {dashboardData.analytics.salesTrend && dashboardData.analytics.salesTrend.length > 0 ? (
-                        <>
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div className="p-4 border rounded-lg">
-                              <p className="text-sm text-muted-foreground">Total Revenue</p>
-                              <p className="text-2xl font-bold">
-                                {formatCurrency(dashboardData.analytics.salesTrend.reduce((sum, item) => sum + item.totalSales, 0))}
-                              </p>
-                            </div>
-                            <div className="p-4 border rounded-lg">
-                              <p className="text-sm text-muted-foreground">Total Orders</p>
-                              <p className="text-2xl font-bold">
-                                {dashboardData.analytics.salesTrend.reduce((sum, item) => sum + item.orderCount, 0)}
-                              </p>
-                            </div>
-                            <div className="p-4 border rounded-lg">
-                              <p className="text-sm text-muted-foreground">Average Order Value</p>
-                              <p className="text-2xl font-bold">
-                                {formatCurrency(
-                                  dashboardData.analytics.salesTrend.reduce((sum, item) => sum + item.totalSales, 0) /
-                                  dashboardData.analytics.salesTrend.reduce((sum, item) => sum + item.orderCount, 1)
-                                )}
-                              </p>
-                            </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      <div className="space-y-4">
+                        <h4 className="font-medium text-sm text-muted-foreground">Revenue Metrics</h4>
+                        <div className="space-y-3">
+                          <div className="flex justify-between items-center p-3 bg-muted/30 rounded-lg">
+                            <span className="text-sm">Total Revenue</span>
+                            <span className="font-bold">{formatCurrency(dashboardData.overview.today.revenue)}</span>
                           </div>
-                          
-                          <div className="space-y-3">
-                            {dashboardData.analytics.salesTrend.map((item: any, index: number) => (
-                              <div key={index} className="p-4 border rounded-lg">
-                                <div className="flex justify-between items-start">
-                                  <div>
-                                    <p className="font-bold">{item.period}</p>
-                                    <p className="text-sm text-muted-foreground">{item.orderCount} orders</p>
-                                  </div>
-                                  <div className="text-right">
-                                    <p className="font-bold">{formatCurrency(item.totalSales)}</p>
-                                    <p className="text-sm text-muted-foreground">
-                                      Avg: {formatCurrency(item.avgOrderValue)}
-                                    </p>
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
+                          <div className="flex justify-between items-center p-3 bg-muted/30 rounded-lg">
+                            <span className="text-sm">Net Revenue</span>
+                            <span className="font-bold">{formatCurrency(dashboardData.overview.today.netRevenue)}</span>
                           </div>
-                        </>
-                      ) : (
-                        <div className="h-96 flex items-center justify-center">
-                          <div className="text-center">
-                            <p className="text-muted-foreground">No sales data available</p>
-                            <Button 
-                              variant="outline" 
-                              className="mt-4"
-                              onClick={() => fetchReportData("sales-trend", { period: "weekly", weeks: 8 })}
-                            >
-                              <TrendingUp className="w-4 h-4 mr-2" />
-                              Load Sales Trend
-                            </Button>
+                          <div className="flex justify-between items-center p-3 bg-muted/30 rounded-lg">
+                            <span className="text-sm">Avg Order Value</span>
+                            <span className="font-bold">{formatCurrency(dashboardData.overview.today.avgOrder)}</span>
                           </div>
                         </div>
-                      )}
+                      </div>
+
+                      <div className="space-y-4">
+                        <h4 className="font-medium text-sm text-muted-foreground">Order Metrics</h4>
+                        <div className="space-y-3">
+                          <div className="flex justify-between items-center p-3 bg-muted/30 rounded-lg">
+                            <span className="text-sm">Total Orders</span>
+                            <span className="font-bold">{dashboardData.overview.today.orders}</span>
+                          </div>
+                          <div className="flex justify-between items-center p-3 bg-muted/30 rounded-lg">
+                            <span className="text-sm">Items Sold</span>
+                            <span className="font-bold">{dashboardData.overview.today.totalItems}</span>
+                          </div>
+                          <div className="flex justify-between items-center p-3 bg-muted/30 rounded-lg">
+                            <span className="text-sm">Conversion Rate</span>
+                            <span className="font-bold">
+                              {dashboardData.overview.today.orders > 0 ? 
+                                ((dashboardData.overview.today.orders / Math.max(1, dashboardData.overview.today.totalItems)) * 100).toFixed(1) : 0}%
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-4">
+                        <h4 className="font-medium text-sm text-muted-foreground">Channel Performance</h4>
+                        <div className="space-y-3">
+                          <div className="flex justify-between items-center p-3 bg-muted/30 rounded-lg">
+                            <div className="flex items-center gap-2">
+                              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: CHART_COLORS.channels.online }} />
+                              <span className="text-sm">Online</span>
+                            </div>
+                            <span className="font-bold">{formatPercentage(dashboardData.overview.channels.onlinePercentage)}</span>
+                          </div>
+                          <div className="flex justify-between items-center p-3 bg-muted/30 rounded-lg">
+                            <div className="flex items-center gap-2">
+                              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: CHART_COLORS.channels.offline }} />
+                              <span className="text-sm">Offline</span>
+                            </div>
+                            <span className="font-bold">{formatPercentage(dashboardData.overview.channels.offlinePercentage)}</span>
+                          </div>
+                          <div className="flex justify-between items-center p-3 bg-muted/30 rounded-lg">
+                            <span className="text-sm">Dominant Channel</span>
+                            <span className="font-bold capitalize">{dashboardData.overview.channels.dominantChannel}</span>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
               </motion.div>
             </TabsContent>
 
-            {/* Analytics Tab - Simplified */}
-            <TabsContent value="analytics" className="space-y-6">
+            {/* Analytics Tab */}
+            <TabsContent value="analytics" className="space-y-8">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <motion.div
-                  initial={{ opacity: 0, x: -20 }}
+                  initial={{ opacity: 0, x: -30 }}
                   animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.5, delay: 0.1 }}
+                  transition={{ delay: 0.2, duration: 0.5 }}
                 >
-                  <Card className="rounded-2xl border-border/40 shadow-lg overflow-hidden">
-                    <CardHeader className="bg-gradient-to-r from-purple-500/10 to-pink-500/10">
+                  <Card className="border-border/50 hover:shadow-xl transition-shadow duration-300">
+                    <CardHeader>
                       <CardTitle className="flex items-center gap-2">
-                        <PieChart className="w-5 h-5" />
-                        Payment Method Split
+                        <BarChart3 className="w-5 h-5 text-indigo-500" />
+                        Revenue vs Orders Comparison
                       </CardTitle>
                       <CardDescription>
-                        Distribution by payment type
+                        Daily sales and order correlation
                       </CardDescription>
                     </CardHeader>
-                    <CardContent className="pt-6">
-                      <div className="space-y-4">
-                        {dashboardData.analytics.paymentSplit && dashboardData.analytics.paymentSplit.length > 0 ? (
-                          dashboardData.analytics.paymentSplit
-                            .filter((item: any) => item.percentage > 0)
-                            .map((payment: any, index: number) => (
-                              <div key={index} className="flex items-center justify-between">
-                                <div className="flex items-center gap-3">
-                                  <div 
-                                    className="w-3 h-3 rounded-full"
-                                    style={{ backgroundColor: CHART_COLORS.paymentMethods[payment.method as keyof typeof CHART_COLORS.paymentMethods] || CHART_COLORS.paymentMethods.other }}
-                                  />
-                                  <span>{formatPaymentMethod(payment.method)}</span>
-                                </div>
-                                <div className="text-right">
-                                  <span className="font-bold">{formatCurrency(payment.amount)}</span>
-                                  <span className="ml-2 text-muted-foreground">({payment.percentage.toFixed(1)}%)</span>
-                                </div>
-                              </div>
-                            ))
-                        ) : (
-                          <div className="h-72 flex items-center justify-center">
-                            <p className="text-muted-foreground">No payment data</p>
-                          </div>
-                        )}
-                      </div>
+                    <CardContent>
+                      <RevenueOrdersChart data={dashboardData.analytics.salesTrend} />
                     </CardContent>
                   </Card>
                 </motion.div>
 
                 <motion.div
-                  initial={{ opacity: 0, x: 20 }}
+                  initial={{ opacity: 0, x: 30 }}
                   animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.5, delay: 0.2 }}
+                  transition={{ delay: 0.3, duration: 0.5 }}
                 >
-                  <Card className="rounded-2xl border-border/40 shadow-lg overflow-hidden">
-                    <CardHeader className="bg-gradient-to-r from-blue-500/10 to-cyan-500/10">
+                  <Card className="border-border/50 hover:shadow-xl transition-shadow duration-300">
+                    <CardHeader>
                       <CardTitle className="flex items-center gap-2">
-                        <Globe className="w-5 h-5" />
-                        Channel Performance
+                        <PieChartIcon className="w-5 h-5 text-rose-500" />
+                        Top Products Revenue Share
                       </CardTitle>
-                      <CardDescription>Online vs Offline sales</CardDescription>
+                      <CardDescription>
+                        Contribution of top 5 products
+                      </CardDescription>
                     </CardHeader>
-                    <CardContent className="pt-6">
-                      <div className="space-y-4">
-                        {dashboardData.analytics.channelSplit && dashboardData.analytics.channelSplit.length > 0 ? (
-                          dashboardData.analytics.channelSplit.map((channel: any, index: number) => (
-                            <div key={index} className="space-y-2">
-                              <div className="flex justify-between">
-                                <div className="flex items-center gap-3">
-                                  <div 
-                                    className="w-3 h-3 rounded-full"
-                                    style={{ backgroundColor: CHART_COLORS.channels[channel.channel as keyof typeof CHART_COLORS.channels] }}
-                                  />
-                                  <span className="font-medium">{formatChannel(channel.channel)}</span>
-                                </div>
-                                <span className="font-bold">{formatCurrency(channel.amount)} ({channel.percentage.toFixed(1)}%)</span>
-                              </div>
-                              <div className="w-full bg-gray-200 rounded-full h-2">
-                                <div 
-                                  className="h-2 rounded-full"
-                                  style={{ 
-                                    width: `${channel.percentage}%`,
-                                    backgroundColor: CHART_COLORS.channels[channel.channel as keyof typeof CHART_COLORS.channels]
-                                  }}
+                    <CardContent>
+                      <div className="h-72">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={dashboardData.analytics.topProducts.slice(0, 5)}
+                              cx="50%"
+                              cy="50%"
+                              labelLine={true}
+                              label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                              outerRadius={80}
+                              fill="#8884d8"
+                              dataKey="revenue"
+                            >
+                              {dashboardData.analytics.topProducts.slice(0, 5).map((entry, index) => (
+                                <Cell 
+                                  key={`cell-${index}`} 
+                                  fill={['#8884d8', '#82ca9d', '#ffc658', '#ff8042', '#0088fe'][index % 5]} 
                                 />
-                              </div>
-                              <div className="text-sm text-muted-foreground flex justify-between">
-                                <span>{channel.count} orders</span>
-                                <span>Avg: {formatCurrency(channel.avgOrderValue)}</span>
-                              </div>
-                            </div>
-                          ))
-                        ) : (
-                          <div className="h-72 flex items-center justify-center">
-                            <p className="text-muted-foreground">No channel data</p>
-                          </div>
-                        )}
+                              ))}
+                            </Pie>
+                            <RechartsTooltip
+                              formatter={(value) => [formatCurrency(value), 'Revenue']}
+                            />
+                          </PieChart>
+                        </ResponsiveContainer>
                       </div>
                     </CardContent>
                   </Card>
                 </motion.div>
               </div>
-            </TabsContent>
 
-            {/* Reports Tab - Simplified */}
-            <TabsContent value="reports" className="space-y-6">
               <motion.div
                 initial={{ opacity: 0, y: 30 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.8, duration: 0.5 }}
+                transition={{ delay: 0.4, duration: 0.5 }}
               >
                 <Card className="border-border/50 hover:shadow-xl transition-shadow duration-300">
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
-                      <LineChart className="w-5 h-5 text-blue-500" />
-                      Generate Reports
+                      <TrendingUp className="w-5 h-5 text-emerald-500" />
+                      Growth Analysis
                     </CardTitle>
                     <CardDescription>
-                      Export detailed analytics reports in various formats
+                      Week-over-week performance metrics
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-6">
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        <Card
-                          className="hover:shadow-md transition-shadow cursor-pointer border-dashed hover:border-primary hover:bg-primary/5"
-                          onClick={() => exportReport("daily-sales", "csv")}
-                        >
-                          <CardHeader className="pb-3">
-                            <CardTitle className="text-base flex items-center gap-2">
-                              <DollarSign className="w-4 h-4" />
-                              Daily Sales
-                            </CardTitle>
-                          </CardHeader>
-                          <CardContent>
-                            <p className="text-sm text-muted-foreground">
-                              Today's sales report with breakdown
-                            </p>
-                          </CardContent>
-                        </Card>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {dashboardData.analytics.salesTrend.slice(-4).map((week, index, array) => {
+                          const previousWeek = array[index - 1];
+                          const revenueGrowth = previousWeek ? 
+                            ((week.totalSales - previousWeek.totalSales) / previousWeek.totalSales * 100) : 0;
+                          const orderGrowth = previousWeek ? 
+                            ((week.orderCount - previousWeek.orderCount) / previousWeek.orderCount * 100) : 0;
+                          
+                          return (
+                            <div key={week.period} className="border rounded-xl p-4 hover:bg-muted/30 transition-colors">
+                              <div className="flex justify-between items-start mb-3">
+                                <h4 className="font-medium">{week.period}</h4>
+                                <div className={`flex items-center ${revenueGrowth >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                                  {revenueGrowth >= 0 ? <TrendingUp className="w-4 h-4 mr-1" /> : <TrendingDown className="w-4 h-4 mr-1" />}
+                                  <span className="text-sm font-medium">{revenueGrowth.toFixed(1)}%</span>
+                                </div>
+                              </div>
+                              <div className="space-y-2">
+                                <div>
+                                  <p className="text-sm text-muted-foreground">Revenue</p>
+                                  <p className="font-bold">{formatCurrency(week.totalSales)}</p>
+                                </div>
+                                <div>
+                                  <p className="text-sm text-muted-foreground">Orders</p>
+                                  <p className="font-bold">{week.orderCount}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {orderGrowth >= 0 ? '+' : ''}{orderGrowth.toFixed(1)}% from previous
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            </TabsContent>
 
-                        <Card
-                          className="hover:shadow-md transition-shadow cursor-pointer border-dashed hover:border-primary hover:bg-primary/5"
-                          onClick={() =>
-                            exportReport("payment-analytics", "csv")
-                          }
+            {/* Reports Tab */}
+            <TabsContent value="reports" className="space-y-8">
+              <motion.div
+                initial={{ opacity: 0, y: 30 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2, duration: 0.5 }}
+              >
+                <Card className="border-border/50 hover:shadow-xl transition-shadow duration-300">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Download className="w-5 h-5 text-blue-500" />
+                      Report Viewer
+                    </CardTitle>
+                    <CardDescription>
+                      View and export detailed reports for selected dates
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-6">
+                      {/* Report Type Selector */}
+                      <div className="flex flex-wrap gap-2 mb-6">
+                        <Button
+                          variant={reportType === "daily-sales" ? "default" : "outline"}
+                          onClick={() => handleReportTypeChange("daily-sales")}
+                          size="sm"
                         >
-                          <CardHeader className="pb-3">
-                            <CardTitle className="text-base flex items-center gap-2">
-                              <CreditCard className="w-4 h-4" />
-                              Payment Analytics
-                            </CardTitle>
-                          </CardHeader>
-                          <CardContent>
-                            <p className="text-sm text-muted-foreground">
-                              Detailed payment method analysis
-                            </p>
-                          </CardContent>
-                        </Card>
-
-                        <Card
-                          className="hover:shadow-md transition-shadow cursor-pointer border-dashed hover:border-primary hover:bg-primary/5"
-                          onClick={() =>
-                            exportReport("channel-performance", "csv")
-                          }
+                          Daily Sales
+                        </Button>
+                        <Button
+                          variant={reportType === "payment-analytics" ? "default" : "outline"}
+                          onClick={() => handleReportTypeChange("payment-analytics")}
+                          size="sm"
                         >
-                          <CardHeader className="pb-3">
-                            <CardTitle className="text-base flex items-center gap-2">
-                              <Globe className="w-4 h-4" />
-                              Channel Performance
-                            </CardTitle>
-                          </CardHeader>
-                          <CardContent>
-                            <p className="text-sm text-muted-foreground">
-                              Online vs offline channel analysis
-                            </p>
-                          </CardContent>
-                        </Card>
-
-                        <Card
-                          className="hover:shadow-md transition-shadow cursor-pointer border-dashed hover:border-primary hover:bg-primary/5"
-                          onClick={() => exportReport("inventory", "csv")}
+                          Payment Analytics
+                        </Button>
+                        <Button
+                          variant={reportType === "channel-performance" ? "default" : "outline"}
+                          onClick={() => handleReportTypeChange("channel-performance")}
+                          size="sm"
                         >
-                          <CardHeader className="pb-3">
-                            <CardTitle className="text-base flex items-center gap-2">
-                              <Package className="w-4 h-4" />
-                              Low Stock Report
-                            </CardTitle>
-                          </CardHeader>
-                          <CardContent>
-                            <p className="text-sm text-muted-foreground">
-                              Inventory status and reorder recommendations
-                            </p>
-                          </CardContent>
-                        </Card>
-
-                        <Card
-                          className="hover:shadow-md transition-shadow cursor-pointer border-dashed hover:border-primary hover:bg-primary/5"
-                          onClick={() => exportReport("sales-trend", "csv")}
+                          Channel Performance
+                        </Button>
+                        <Button
+                          variant={reportType === "inventory" ? "default" : "outline"}
+                          onClick={() => handleReportTypeChange("inventory")}
+                          size="sm"
                         >
-                          <CardHeader className="pb-3">
-                            <CardTitle className="text-base flex items-center gap-2">
-                              <TrendingUp className="w-4 h-4" />
-                              Sales Trend
-                            </CardTitle>
-                          </CardHeader>
-                          <CardContent>
-                            <p className="text-sm text-muted-foreground">
-                              Historical sales trend analysis
-                            </p>
-                          </CardContent>
-                        </Card>
-
-                        <Card
-                          className="hover:shadow-md transition-shadow cursor-pointer border-dashed hover:border-primary hover:bg-primary/5"
-                          onClick={() =>
-                            exportReport("inventory-valuation", "csv")
-                          }
+                          Inventory
+                        </Button>
+                        <Button
+                          variant={reportType === "sales-trend" ? "default" : "outline"}
+                          onClick={() => handleReportTypeChange("sales-trend")}
+                          size="sm"
                         >
-                          <CardHeader className="pb-3">
-                            <CardTitle className="text-base flex items-center gap-2">
-                              <Package className="w-4 h-4" />
-                              Inventory Valuation
-                            </CardTitle>
-                          </CardHeader>
-                          <CardContent>
-                            <p className="text-sm text-muted-foreground">
-                              Current inventory value assessment
-                            </p>
-                          </CardContent>
-                        </Card>
+                          Sales Trend
+                        </Button>
+                        <Button
+                          variant={reportType === "inventory-valuation" ? "default" : "outline"}
+                          onClick={() => handleReportTypeChange("inventory-valuation")}
+                          size="sm"
+                        >
+                          Inventory Valuation
+                        </Button>
                       </div>
 
-                      <div className="border-t pt-6">
-                        <h3 className="text-lg font-semibold mb-4">
-                          Export Options
-                        </h3>
-                        <div className="flex flex-wrap gap-3">
-                          <Button
-                            onClick={() =>
-                              exportReport("payment-analytics", "csv")
-                            }
-                            variant="outline"
-                            className="rounded-lg"
-                          >
-                            Export as CSV
-                          </Button>
-                          <Button
-                            onClick={() =>
-                              exportReport("payment-analytics", "excel")
-                            }
-                            variant="outline"
-                            className="rounded-lg"
-                          >
-                            Export as Excel
-                          </Button>
-                          <Button
-                            onClick={() =>
-                              exportReport("payment-analytics", "pdf")
-                            }
-                            variant="outline"
-                            className="rounded-lg"
-                          >
-                            Export as PDF
-                          </Button>
-                          <Button
-                            onClick={() => {
-                              // Export all reports
-                              exportReport("daily-sales", "csv");
-                              setTimeout(() => exportReport("payment-analytics", "csv"), 500);
-                              setTimeout(() => exportReport("inventory", "csv"), 1000);
-                            }}
-                            variant="default"
-                            className="rounded-lg"
-                          >
-                            <Download className="w-4 h-4 mr-2" />
-                            Export All Reports
-                          </Button>
+                      {/* Date Information */}
+                      <div className="bg-muted/30 p-4 rounded-lg">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                          <div>
+                            <h3 className="font-medium mb-2">Report Parameters</h3>
+                            <div className="text-sm text-muted-foreground space-y-1">
+                              {reportType === "daily-sales" ? (
+                                <>
+                                  <p>Date: {format(selectedDate, "MMMM dd, yyyy")}</p>
+                                  <p>Report Type: Daily Sales Report</p>
+                                </>
+                              ) : reportType === "inventory" || reportType === "inventory-valuation" ? (
+                                <>
+                                  <p>Date: Current Inventory</p>
+                                  <p>Report Type: {reportType.replace("-", " ").toUpperCase()}</p>
+                                </>
+                              ) : (
+                                <>
+                                  <p>Date Range: {format(dateRange.start, "MMM dd, yyyy")} to {format(dateRange.end, "MMM dd, yyyy")}</p>
+                                  <p>Report Type: {reportType.replace("-", " ").toUpperCase()}</p>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button
+                              onClick={() => fetchSpecificReport()}
+                              variant="outline"
+                              size="sm"
+                              disabled={loading}
+                            >
+                              <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+                              Refresh Report
+                            </Button>
+                            <Button
+                              onClick={() => exportReport(reportType, "csv")}
+                              variant="default"
+                              size="sm"
+                              disabled={exportLoading}
+                            >
+                              {exportLoading ? (
+                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                              ) : (
+                                <Download className="w-4 h-4 mr-2" />
+                              )}
+                              Export CSV
+                            </Button>
+                          </div>
                         </div>
                       </div>
+
+                      {/* Report Content */}
+                      {loading ? (
+                        <div className="h-96 flex items-center justify-center">
+                          <div className="text-center">
+                            <Loader2 className="w-8 h-8 text-primary animate-spin mx-auto mb-4" />
+                            <p className="text-muted-foreground">Loading report data...</p>
+                          </div>
+                        </div>
+                      ) : error ? (
+                        <div className="h-96 flex items-center justify-center">
+                          <div className="text-center">
+                            <AlertCircle className="w-8 h-8 text-red-500 mx-auto mb-4" />
+                            <p className="text-muted-foreground">{error}</p>
+                            <Button
+                              onClick={fetchSpecificReport}
+                              variant="outline"
+                              className="mt-4"
+                            >
+                              Retry
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        renderReportContent()
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+
+              <motion.div
+                initial={{ opacity: 0, y: 30 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.3, duration: 0.5 }}
+              >
+                <Card className="border-border/50 hover:shadow-xl transition-shadow duration-300">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Download className="w-5 h-5 text-blue-500" />
+                      Quick Export
+                    </CardTitle>
+                    <CardDescription>
+                      Download reports in various formats
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      <Button
+                        onClick={() => exportReport("daily-sales", "csv")}
+                        variant="outline"
+                        className="h-auto p-4 flex-col items-start justify-start"
+                        disabled={exportLoading}
+                      >
+                        <div className="flex items-center gap-2 mb-2">
+                          <DollarSign className="w-4 h-4" />
+                          <span className="font-medium">Daily Sales CSV</span>
+                        </div>
+                        <p className="text-sm text-muted-foreground text-left">
+                          {format(selectedDate, "MMM dd, yyyy")}
+                        </p>
+                      </Button>
+                      <Button
+                        onClick={() => exportReport("payment-analytics", "csv")}
+                        variant="outline"
+                        className="h-auto p-4 flex-col items-start justify-start"
+                        disabled={exportLoading}
+                      >
+                        <div className="flex items-center gap-2 mb-2">
+                          <CreditCard className="w-4 h-4" />
+                          <span className="font-medium">Payment Analytics CSV</span>
+                        </div>
+                        <p className="text-sm text-muted-foreground text-left">
+                          {format(dateRange.start, "MMM dd")} - {format(dateRange.end, "MMM dd")}
+                        </p>
+                      </Button>
+                      <Button
+                        onClick={() => exportReport("channel-performance", "csv")}
+                        variant="outline"
+                        className="h-auto p-4 flex-col items-start justify-start"
+                        disabled={exportLoading}
+                      >
+                        <div className="flex items-center gap-2 mb-2">
+                          <Globe className="w-4 h-4" />
+                          <span className="font-medium">Channel Performance CSV</span>
+                        </div>
+                        <p className="text-sm text-muted-foreground text-left">
+                          {format(dateRange.start, "MMM dd")} - {format(dateRange.end, "MMM dd")}
+                        </p>
+                      </Button>
+                      <Button
+                        onClick={() => exportReport("sales-trend", "csv")}
+                        variant="outline"
+                        className="h-auto p-4 flex-col items-start justify-start"
+                        disabled={exportLoading}
+                      >
+                        <div className="flex items-center gap-2 mb-2">
+                          <TrendingUp className="w-4 h-4" />
+                          <span className="font-medium">Sales Trend CSV</span>
+                        </div>
+                        <p className="text-sm text-muted-foreground text-left">
+                          Last 8 weeks data
+                        </p>
+                      </Button>
+                      <Button
+                        onClick={() => exportReport("inventory", "csv")}
+                        variant="outline"
+                        className="h-auto p-4 flex-col items-start justify-start"
+                        disabled={exportLoading}
+                      >
+                        <div className="flex items-center gap-2 mb-2">
+                          <Package className="w-4 h-4" />
+                          <span className="font-medium">Inventory Report CSV</span>
+                        </div>
+                        <p className="text-sm text-muted-foreground text-left">
+                          Low stock items and alerts
+                        </p>
+                      </Button>
+                      <Button
+                        onClick={() => exportReport("inventory-valuation", "csv")}
+                        variant="outline"
+                        className="h-auto p-4 flex-col items-start justify-start"
+                        disabled={exportLoading}
+                      >
+                        <div className="flex items-center gap-2 mb-2">
+                          <DollarSign className="w-4 h-4" />
+                          <span className="font-medium">Inventory Valuation CSV</span>
+                        </div>
+                        <p className="text-sm text-muted-foreground text-left">
+                          Stock value and profitability
+                        </p>
+                      </Button>
                     </div>
                   </CardContent>
                 </Card>
@@ -1871,31 +2220,6 @@ export default function ReportView() {
             </TabsContent>
           </Tabs>
         </motion.div>
-
-        {/* Error Display */}
-        {error && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900 rounded-xl p-6 text-center"
-          >
-            <AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-red-700 dark:text-red-400 mb-2">
-              Failed to Load Dashboard
-            </h3>
-            <p className="text-red-600 dark:text-red-300 mb-4">{error}</p>
-            <div className="flex gap-3 justify-center">
-              <Button onClick={fetchDashboardData} variant="outline">
-                <RefreshCw className="w-4 h-4 mr-2" />
-                Retry
-              </Button>
-              <Button onClick={() => setIsDemoMode(true)}>
-                <Sparkles className="w-4 h-4 mr-2" />
-                Use Demo Mode
-              </Button>
-            </div>
-          </motion.div>
-        )}
 
         {/* Footer with Data Info */}
         <motion.div
@@ -1905,12 +2229,14 @@ export default function ReportView() {
           className="text-center text-sm text-muted-foreground border-t pt-6"
         >
           <p>
-            Data last updated: {new Date().toLocaleTimeString()} • Showing data for{" "}
+            Dashboard data last updated: {new Date().toLocaleTimeString()} • Showing data for{" "}
             {dateRange.start.toLocaleDateString()} to {dateRange.end.toLocaleDateString()}
-            {isDemoMode && " • Using demo data"}
           </p>
           <p className="mt-2 text-xs">
-            Sales trend data: {dashboardData.analytics.salesTrend?.length || 0} weeks available
+            {activeTab === "reports" && reportData 
+              ? `${reportType.replace("-", " ")} report loaded for ${reportType === "daily-sales" ? format(selectedDate, "MMMM dd, yyyy") : format(dateRange.start, "MMM dd, yyyy") + " to " + format(dateRange.end, "MMM dd, yyyy")}`
+              : `Sales trend data: ${dashboardData.analytics.salesTrend?.length || 0} periods available`
+            }
           </p>
         </motion.div>
       </main>
