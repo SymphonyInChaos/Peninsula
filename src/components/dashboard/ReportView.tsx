@@ -1,16 +1,10 @@
-"use client";
+"use client"
 
-import { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useState, useEffect } from "react"
+import { motion } from "framer-motion"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   BarChart3,
   TrendingUp,
@@ -24,7 +18,7 @@ import {
   CreditCard,
   Globe,
   LineChart,
-  PieChart as PieChartIcon,
+  PieChartIcon,
   CalendarIcon,
   Download,
   TrendingDown,
@@ -33,18 +27,16 @@ import {
   Target,
   Users,
   AlertCircle,
-} from "lucide-react";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
-import { format, subDays } from "date-fns";
+  Trophy,
+  UserCheck,
+} from "lucide-react"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Calendar } from "@/components/ui/calendar"
+import { format, subDays } from "date-fns"
 
 // Import the centralized API utilities
-import { api, formatCurrency, formatPercentage } from "@/lib/api";
-import type { DashboardData } from "@/lib/api";
+import { api, formatCurrency, formatPercentage } from "@/lib/api"
+import type { DashboardData } from "@/lib/api"
 
 // Import Recharts components
 import {
@@ -68,16 +60,16 @@ import {
   PolarGrid,
   PolarAngleAxis,
   PolarRadiusAxis,
-} from "recharts";
+} from "recharts"
 
 // Utility functions
 const formatPaymentMethod = (method: string): string => {
-  return api.payments.formatPaymentMethod(method);
-};
+  return api.payments.formatPaymentMethod(method)
+}
 
 const formatChannel = (channel: string): string => {
-  return api.payments.formatChannel(channel);
-};
+  return api.payments.formatChannel(channel)
+}
 
 // Color Schemes for Charts
 const CHART_COLORS = {
@@ -93,7 +85,7 @@ const CHART_COLORS = {
     online: "#3b82f6", // blue
     offline: "#f59e0b", // orange
   },
-};
+}
 
 // Chart Components
 
@@ -104,7 +96,7 @@ const SalesTrendChart = ({ data }: { data: any[] }) => {
       <div className="h-64 flex items-center justify-center">
         <p className="text-muted-foreground">No sales data available</p>
       </div>
-    );
+    )
   }
 
   return (
@@ -118,28 +110,22 @@ const SalesTrendChart = ({ data }: { data: any[] }) => {
             </linearGradient>
           </defs>
           <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.2} />
-          <XAxis 
-            dataKey="period" 
-            stroke="#9ca3af" 
-            fontSize={12}
-            tickLine={false}
-            axisLine={false}
-          />
-          <YAxis 
-            stroke="#9ca3af" 
+          <XAxis dataKey="period" stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} />
+          <YAxis
+            stroke="#9ca3af"
             fontSize={12}
             tickLine={false}
             axisLine={false}
             tickFormatter={(value) => `$${value}`}
           />
           <RechartsTooltip
-            contentStyle={{ 
-              backgroundColor: 'rgba(17, 24, 39, 0.9)',
-              border: '1px solid #374151',
-              borderRadius: '8px',
-              backdropFilter: 'blur(10px)'
+            contentStyle={{
+              backgroundColor: "rgba(17, 24, 39, 0.9)",
+              border: "1px solid #374151",
+              borderRadius: "8px",
+              backdropFilter: "blur(10px)",
             }}
-            formatter={(value) => [formatCurrency(value), 'Revenue']}
+            formatter={(value) => [formatCurrency(value as number), "Revenue"]}
             labelFormatter={(label) => `Period: ${label}`}
           />
           <Legend />
@@ -151,7 +137,7 @@ const SalesTrendChart = ({ data }: { data: any[] }) => {
             fill="url(#colorSales)"
             strokeWidth={3}
             name="Revenue"
-            dot={{ stroke: '#8884d8', strokeWidth: 2, r: 4 }}
+            dot={{ stroke: "#8884d8", strokeWidth: 2, r: 4 }}
             activeDot={{ r: 6, strokeWidth: 2 }}
           />
           <Line
@@ -161,13 +147,13 @@ const SalesTrendChart = ({ data }: { data: any[] }) => {
             strokeWidth={2}
             name="Orders"
             strokeDasharray="5 5"
-            dot={{ stroke: '#10b981', strokeWidth: 2, r: 3 }}
+            dot={{ stroke: "#10b981", strokeWidth: 2, r: 3 }}
           />
         </AreaChart>
       </ResponsiveContainer>
     </div>
-  );
-};
+  )
+}
 
 // Payment Method Pie Chart
 const PaymentMethodPieChart = ({ data }: { data: any[] }) => {
@@ -176,17 +162,19 @@ const PaymentMethodPieChart = ({ data }: { data: any[] }) => {
       <div className="h-64 flex items-center justify-center">
         <p className="text-muted-foreground">No payment data available</p>
       </div>
-    );
+    )
   }
 
   const chartData = data
-    .filter(item => item.percentage > 0)
-    .map(item => ({
+    .filter((item) => item.percentage > 0)
+    .map((item) => ({
       name: formatPaymentMethod(item.method),
       value: item.percentage,
       amount: item.amount,
-      color: CHART_COLORS.paymentMethods[item.method as keyof typeof CHART_COLORS.paymentMethods] || CHART_COLORS.paymentMethods.other
-    }));
+      color:
+        CHART_COLORS.paymentMethods[item.method as keyof typeof CHART_COLORS.paymentMethods] ||
+        CHART_COLORS.paymentMethods.other,
+    }))
 
   return (
     <div className="h-80">
@@ -210,60 +198,54 @@ const PaymentMethodPieChart = ({ data }: { data: any[] }) => {
             ))}
           </Pie>
           <RechartsTooltip
-            contentStyle={{ 
-              backgroundColor: 'rgba(17, 24, 39, 0.9)',
-              border: '1px solid #374151',
-              borderRadius: '8px',
-              backdropFilter: 'blur(10px)'
+            contentStyle={{
+              backgroundColor: "rgba(17, 24, 39, 0.9)",
+              border: "1px solid #374151",
+              borderRadius: "8px",
+              backdropFilter: "blur(10px)",
             }}
             formatter={(value, name, props) => {
-              const item = chartData.find(d => d.name === name);
+              const item = chartData.find((d) => d.name === name)
               return [
                 <div key="tooltip-content">
                   <p className="font-medium">{name}</p>
-                  <p className="text-sm">{formatPercentage(value)}</p>
-                  <p className="text-xs text-muted-foreground">
-                    Amount: {formatCurrency(item?.amount || 0)}
-                  </p>
-                </div>
-              ];
+                  <p className="text-sm">{formatPercentage(value as number)}</p>
+                  <p className="text-xs text-muted-foreground">Amount: {formatCurrency(item?.amount || 0)}</p>
+                </div>,
+              ]
             }}
           />
-          <Legend 
-            layout="vertical" 
-            verticalAlign="middle" 
+          <Legend
+            layout="vertical"
+            verticalAlign="middle"
             align="right"
-            formatter={(value, entry) => (
-              <span style={{ color: entry.color }}>
-                {value}
-              </span>
-            )}
+            formatter={(value, entry: any) => <span style={{ color: entry.color }}>{value}</span>}
           />
         </PieChart>
       </ResponsiveContainer>
     </div>
-  );
-};
+  )
+}
 
 // Channel Comparison Chart
-const ChannelComparisonChart = ({ 
-  onlinePercentage, 
-  offlinePercentage, 
-  channelSplit 
-}: { 
-  onlinePercentage: number; 
-  offlinePercentage: number; 
-  channelSplit: any[] 
+const ChannelComparisonChart = ({
+  onlinePercentage,
+  offlinePercentage,
+  channelSplit,
+}: {
+  onlinePercentage: number
+  offlinePercentage: number
+  channelSplit: any[]
 }) => {
   const chartData = [
     {
-      name: 'Channel Distribution',
+      name: "Channel Distribution",
       online: onlinePercentage,
       offline: offlinePercentage,
-      onlineAmount: channelSplit.find(c => c.channel === 'online')?.amount || 0,
-      offlineAmount: channelSplit.find(c => c.channel === 'offline')?.amount || 0,
-    }
-  ];
+      onlineAmount: channelSplit.find((c) => c.channel === "online")?.amount || 0,
+      offlineAmount: channelSplit.find((c) => c.channel === "offline")?.amount || 0,
+    },
+  ]
 
   return (
     <div className="h-64">
@@ -273,46 +255,44 @@ const ChannelComparisonChart = ({
           <XAxis type="number" domain={[0, 100]} tickFormatter={(value) => `${value}%`} />
           <YAxis type="category" dataKey="name" hide />
           <RechartsTooltip
-            contentStyle={{ 
-              backgroundColor: 'rgba(17, 24, 39, 0.9)',
-              border: '1px solid #374151',
-              borderRadius: '8px',
-              backdropFilter: 'blur(10px)'
+            contentStyle={{
+              backgroundColor: "rgba(17, 24, 39, 0.9)",
+              border: "1px solid #374151",
+              borderRadius: "8px",
+              backdropFilter: "blur(10px)",
             }}
             formatter={(value, name) => {
-              const isOnline = name === 'online';
-              const amount = isOnline ? chartData[0].onlineAmount : chartData[0].offlineAmount;
+              const isOnline = name === "online"
+              const amount = isOnline ? chartData[0].onlineAmount : chartData[0].offlineAmount
               return [
                 <div key="tooltip-content">
-                  <p className="font-medium">{isOnline ? 'Online' : 'Offline'}</p>
+                  <p className="font-medium">{isOnline ? "Online" : "Offline"}</p>
                   <p className="text-sm">{value}%</p>
-                  <p className="text-xs text-muted-foreground">
-                    Amount: {formatCurrency(amount)}
-                  </p>
-                </div>
-              ];
+                  <p className="text-xs text-muted-foreground">Amount: {formatCurrency(amount)}</p>
+                </div>,
+              ]
             }}
           />
           <Legend />
-          <Bar 
-            dataKey="online" 
-            fill={CHART_COLORS.channels.online} 
-            name="Online" 
+          <Bar
+            dataKey="online"
+            fill={CHART_COLORS.channels.online}
+            name="Online"
             radius={[0, 8, 8, 0]}
             maxBarSize={80}
           />
-          <Bar 
-            dataKey="offline" 
-            fill={CHART_COLORS.channels.offline} 
-            name="Offline" 
+          <Bar
+            dataKey="offline"
+            fill={CHART_COLORS.channels.offline}
+            name="Offline"
             radius={[0, 8, 8, 0]}
             maxBarSize={80}
           />
         </BarChart>
       </ResponsiveContainer>
     </div>
-  );
-};
+  )
+}
 
 // Hourly Sales Chart
 const HourlySalesChart = ({ data }: { data: any[] }) => {
@@ -321,47 +301,39 @@ const HourlySalesChart = ({ data }: { data: any[] }) => {
       <div className="h-64 flex items-center justify-center">
         <p className="text-muted-foreground">No hourly data available</p>
       </div>
-    );
+    )
   }
 
-  const chartData = data.map(item => ({
+  const chartData = data.map((item) => ({
     hour: item.hour,
     sales: item.sales,
     orders: item.orders,
     netSales: item.netSales,
-  }));
+  }))
 
   return (
     <div className="h-80">
       <ResponsiveContainer width="100%" height="100%">
         <RechartsLineChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.2} />
-          <XAxis 
-            dataKey="hour" 
-            stroke="#9ca3af" 
-            fontSize={12}
-            tickLine={false}
-            axisLine={false}
-          />
-          <YAxis 
-            stroke="#9ca3af" 
+          <XAxis dataKey="hour" stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} />
+          <YAxis
+            stroke="#9ca3af"
             fontSize={12}
             tickLine={false}
             axisLine={false}
             tickFormatter={(value) => `$${value}`}
           />
           <RechartsTooltip
-            contentStyle={{ 
-              backgroundColor: 'rgba(17, 24, 39, 0.9)',
-              border: '1px solid #374151',
-              borderRadius: '8px',
-              backdropFilter: 'blur(10px)'
+            contentStyle={{
+              backgroundColor: "rgba(17, 24, 39, 0.9)",
+              border: "1px solid #374151",
+              borderRadius: "8px",
+              backdropFilter: "blur(10px)",
             }}
             formatter={(value, name) => [
-              formatCurrency(value), 
-              name === 'sales' ? 'Sales' : 
-              name === 'netSales' ? 'Net Sales' : 
-              name === 'orders' ? 'Orders' : name
+              formatCurrency(value as number),
+              name === "sales" ? "Sales" : name === "netSales" ? "Net Sales" : name === "orders" ? "Orders" : name,
             ]}
           />
           <Legend />
@@ -371,7 +343,7 @@ const HourlySalesChart = ({ data }: { data: any[] }) => {
             stroke="#3b82f6"
             strokeWidth={3}
             name="Total Sales"
-            dot={{ stroke: '#3b82f6', strokeWidth: 2, r: 4 }}
+            dot={{ stroke: "#3b82f6", strokeWidth: 2, r: 4 }}
             activeDot={{ r: 6, strokeWidth: 2 }}
           />
           <Line
@@ -381,7 +353,7 @@ const HourlySalesChart = ({ data }: { data: any[] }) => {
             strokeWidth={3}
             name="Net Sales"
             strokeDasharray="5 5"
-            dot={{ stroke: '#10b981', strokeWidth: 2, r: 4 }}
+            dot={{ stroke: "#10b981", strokeWidth: 2, r: 4 }}
           />
           <Line
             type="monotone"
@@ -389,13 +361,13 @@ const HourlySalesChart = ({ data }: { data: any[] }) => {
             stroke="#ec4899"
             strokeWidth={2}
             name="Orders"
-            dot={{ stroke: '#ec4899', strokeWidth: 2, r: 3 }}
+            dot={{ stroke: "#ec4899", strokeWidth: 2, r: 3 }}
           />
         </RechartsLineChart>
       </ResponsiveContainer>
     </div>
-  );
-};
+  )
+}
 
 // Performance Radar Chart
 const PerformanceRadarChart = ({ data }: { data: any[] }) => {
@@ -404,20 +376,18 @@ const PerformanceRadarChart = ({ data }: { data: any[] }) => {
       <div className="h-64 flex items-center justify-center">
         <p className="text-muted-foreground">Insufficient data for performance chart</p>
       </div>
-    );
+    )
   }
 
   // Take last 4 periods for comparison
-  const recentData = data.slice(-4);
+  const recentData = data.slice(-4)
   const chartData = recentData.map((item, index) => ({
     subject: item.period,
     Revenue: item.totalSales / 1000, // Scale down for better visualization
     Orders: item.orderCount,
-    'Avg Order': item.avgOrderValue,
-    fullMark: Math.max(
-      ...recentData.map(d => Math.max(d.totalSales/1000, d.orderCount, d.avgOrderValue))
-    ),
-  }));
+    "Avg Order": item.avgOrderValue,
+    fullMark: Math.max(...recentData.map((d) => Math.max(d.totalSales / 1000, d.orderCount, d.avgOrderValue))),
+  }))
 
   return (
     <div className="h-80">
@@ -425,19 +395,21 @@ const PerformanceRadarChart = ({ data }: { data: any[] }) => {
         <RadarChart cx="50%" cy="50%" outerRadius="80%" data={chartData}>
           <PolarGrid stroke="#374151" opacity={0.3} />
           <PolarAngleAxis dataKey="subject" stroke="#9ca3af" fontSize={12} />
-          <PolarRadiusAxis angle={30} domain={[0, 'dataMax']} stroke="#9ca3af" />
+          <PolarRadiusAxis angle={30} domain={[0, "dataMax"]} stroke="#9ca3af" />
           <RechartsTooltip
-            contentStyle={{ 
-              backgroundColor: 'rgba(17, 24, 39, 0.9)',
-              border: '1px solid #374151',
-              borderRadius: '8px',
-              backdropFilter: 'blur(10px)'
+            contentStyle={{
+              backgroundColor: "rgba(17, 24, 39, 0.9)",
+              border: "1px solid #374151",
+              borderRadius: "8px",
+              backdropFilter: "blur(10px)",
             }}
             formatter={(value, name) => [
-              name === 'Revenue' ? formatCurrency(value * 1000) :
-              name === 'Avg Order' ? formatCurrency(value) :
-              value,
-              name
+              name === "Revenue"
+                ? formatCurrency((value as number) * 1000)
+                : name === "Avg Order"
+                  ? formatCurrency(value as number)
+                  : value,
+              name,
             ]}
           />
           <Radar
@@ -468,8 +440,8 @@ const PerformanceRadarChart = ({ data }: { data: any[] }) => {
         </RadarChart>
       </ResponsiveContainer>
     </div>
-  );
-};
+  )
+}
 
 // Revenue vs Orders Comparison Chart
 const RevenueOrdersChart = ({ data }: { data: any[] }) => {
@@ -478,7 +450,7 @@ const RevenueOrdersChart = ({ data }: { data: any[] }) => {
       <div className="h-64 flex items-center justify-center">
         <p className="text-muted-foreground">No data available</p>
       </div>
-    );
+    )
   }
 
   return (
@@ -490,15 +462,12 @@ const RevenueOrdersChart = ({ data }: { data: any[] }) => {
           <YAxis yAxisId="left" stroke="#9ca3af" fontSize={12} />
           <YAxis yAxisId="right" orientation="right" stroke="#9ca3af" fontSize={12} />
           <RechartsTooltip
-            contentStyle={{ 
-              backgroundColor: 'rgba(17, 24, 39, 0.9)',
-              border: '1px solid #374151',
-              borderRadius: '8px'
+            contentStyle={{
+              backgroundColor: "rgba(17, 24, 39, 0.9)",
+              border: "1px solid #374151",
+              borderRadius: "8px",
             }}
-            formatter={(value, name) => [
-              name === 'Revenue' ? formatCurrency(value) : value,
-              name
-            ]}
+            formatter={(value, name) => [name === "Revenue" ? formatCurrency(value as number) : value, name]}
           />
           <Legend />
           <Bar yAxisId="left" dataKey="totalSales" fill="#8884d8" name="Revenue" radius={[4, 4, 0, 0]} />
@@ -506,54 +475,54 @@ const RevenueOrdersChart = ({ data }: { data: any[] }) => {
         </BarChart>
       </ResponsiveContainer>
     </div>
-  );
-};
+  )
+}
 
 // Main ReportView Component
 export default function ReportView() {
-  const [activeTab, setActiveTab] = useState("overview");
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [activeTab, setActiveTab] = useState("overview")
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null)
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date())
   const [dateRange, setDateRange] = useState<{ start: Date; end: Date }>({
     start: subDays(new Date(), 7),
     end: new Date(),
-  });
-  const [reportData, setReportData] = useState<any>(null);
-  const [reportType, setReportType] = useState<string>("daily-sales");
-  const [exportLoading, setExportLoading] = useState(false);
+  })
+  const [reportData, setReportData] = useState<any>(null)
+  const [reportType, setReportType] = useState<string>("daily-sales")
+  const [exportLoading, setExportLoading] = useState(false)
 
   // Fetch dashboard data on mount
   useEffect(() => {
-    fetchDashboardData();
-  }, []);
+    fetchDashboardData()
+  }, [])
 
   // Fetch specific report data when date or date range changes
   useEffect(() => {
     if (activeTab === "reports") {
-      fetchSpecificReport();
+      fetchSpecificReport()
     }
-  }, [selectedDate, dateRange, reportType, activeTab]);
+  }, [selectedDate, dateRange, reportType, activeTab])
 
   const fetchDashboardData = async () => {
     try {
-      setLoading(true);
-      setError(null);
+      setLoading(true)
+      setError(null)
 
       // Check if user is authenticated
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("token")
       if (!token) {
-        setError("Authentication required. Please login.");
-        setLoading(false);
-        return;
+        setError("Authentication required. Please login.")
+        setLoading(false)
+        return
       }
 
       // Use the centralized API utility
-      const data = await api.reports.getDashboard();
+      const data = await api.reports.getDashboard()
       if (data) {
-        console.log("[ReportView] API data received:", data);
-        
+        console.log("[ReportView] API data received:", data)
+
         // Transform the API data to match our DashboardData interface
         const transformedData: DashboardData = {
           overview: {
@@ -586,55 +555,61 @@ export default function ReportView() {
             },
           },
           analytics: {
-            paymentSplit: data.analytics?.paymentSplit?.map((item: any) => ({
-              method: item.method,
-              count: item.count || 0,
-              amount: item.amount || 0,
-              percentage: item.percentage || Math.abs(item.amountPercentage) || 0,
-            })) || [],
-            channelSplit: data.analytics?.channelSplit?.map((item: any) => ({
-              channel: item.channel,
-              count: item.count || 0,
-              amount: item.amount || 0,
-              percentage: item.percentage || 0,
-              avgOrderValue: item.avgOrderValue || 0,
-            })) || [],
-            hourlyBreakdown: data.analytics?.hourlyBreakdown?.map((item: any) => ({
-              hour: item.hour,
-              sales: item.sales || 0,
-              orders: item.orders || 0,
-              refunds: item.refunds || 0,
-              netSales: item.netSales || 0,
-              dominantPaymentMethod: item.dominantPaymentMethod || "cash",
-              onlinePercentage: item.onlinePercentage || 0,
-            })) || [],
-            salesTrend: data.analytics?.salesTrend?.map((item: any, index: number) => {
-              let period = item.period || `Week ${index + 1}`;
-              const weekMatch = period.match(/W(\d+)$/);
-              if (weekMatch) {
-                period = `Week ${weekMatch[1]}`;
-              }
-              
-              return {
-                period: period,
-                totalSales: item.netSales || item.totalSales || 0,
-                orderCount: item.orders || item.orderCount || 0,
+            paymentSplit:
+              data.analytics?.paymentSplit?.map((item: any) => ({
+                method: item.method,
+                count: item.count || 0,
+                amount: item.amount || 0,
+                percentage: item.percentage || Math.abs(item.amountPercentage) || 0,
+              })) || [],
+            channelSplit:
+              data.analytics?.channelSplit?.map((item: any) => ({
+                channel: item.channel,
+                count: item.count || 0,
+                amount: item.amount || 0,
+                percentage: item.percentage || 0,
                 avgOrderValue: item.avgOrderValue || 0,
-              };
-            }) || [],
-            topProducts: data.analytics?.topProducts?.map((item: any) => ({
-              name: item.name || "Unknown Product",
-              quantity: item.quantity || 0,
-              revenue: item.revenue || 0,
-            })) || [],
+              })) || [],
+            hourlyBreakdown:
+              data.analytics?.hourlyBreakdown?.map((item: any) => ({
+                hour: item.hour,
+                sales: item.sales || 0,
+                orders: item.orders || 0,
+                refunds: item.refunds || 0,
+                netSales: item.netSales || 0,
+                dominantPaymentMethod: item.dominantPaymentMethod || "cash",
+                onlinePercentage: item.onlinePercentage || 0,
+              })) || [],
+            salesTrend:
+              data.analytics?.salesTrend?.map((item: any, index: number) => {
+                let period = item.period || `Week ${index + 1}`
+                const weekMatch = period.match(/W(\d+)$/)
+                if (weekMatch) {
+                  period = `Week ${weekMatch[1]}`
+                }
+
+                return {
+                  period: period,
+                  totalSales: item.netSales || item.totalSales || 0,
+                  orderCount: item.orders || item.orderCount || 0,
+                  avgOrderValue: item.avgOrderValue || 0,
+                }
+              }) || [],
+            topProducts:
+              data.analytics?.topProducts?.map((item: any) => ({
+                name: item.name || "Unknown Product",
+                quantity: item.quantity || 0,
+                revenue: item.revenue || 0,
+              })) || [],
           },
           alerts: {
-            critical: data.alerts?.critical?.map((item: any) => ({
-              name: item.name || "Unknown Item",
-              stock: item.stock || 0,
-              urgency: item.urgency || "medium",
-              suggestedReorderQty: item.suggestedReorderQty || 10,
-            })) || [],
+            critical:
+              data.alerts?.critical?.map((item: any) => ({
+                name: item.name || "Unknown Item",
+                stock: item.stock || 0,
+                urgency: item.urgency || "medium",
+                suggestedReorderQty: item.suggestedReorderQty || 10,
+              })) || [],
             stockAlerts: data.alerts?.stockAlerts || [],
             performanceAlerts: data.alerts?.performanceAlerts || [],
             todayPerformance: data.alerts?.todayPerformance || "good",
@@ -652,145 +627,153 @@ export default function ReportView() {
               channelTrend: data.insights?.trends?.channelTrend || { onlineGrowth: 0, offlineGrowth: 0 },
             },
           },
-        };
-        
-        setDashboardData(transformedData);
+        }
+
+        setDashboardData(transformedData)
       } else {
-        throw new Error("No data returned from API");
+        throw new Error("No data returned from API")
       }
     } catch (error) {
-      console.error("[ReportView] Error fetching dashboard:", error);
-      const errorMessage = error instanceof Error ? error.message : "Failed to load dashboard data";
-      setError(errorMessage);
-      setDashboardData(null);
+      console.error("[ReportView] Error fetching dashboard:", error)
+      const errorMessage = error instanceof Error ? error.message : "Failed to load dashboard data"
+      setError(errorMessage)
+      setDashboardData(null)
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
   const fetchSpecificReport = async () => {
     try {
-      setLoading(true);
-      
-      let response;
-      const formattedDate = format(selectedDate, "yyyy-MM-dd");
-      const formattedStartDate = format(dateRange.start, "yyyy-MM-dd");
-      const formattedEndDate = format(dateRange.end, "yyyy-MM-dd");
-      
+      setLoading(true)
+
+      let response
+      const formattedDate = format(selectedDate, "yyyy-MM-dd")
+      const formattedStartDate = format(dateRange.start, "yyyy-MM-dd")
+      const formattedEndDate = format(dateRange.end, "yyyy-MM-dd")
+
       console.log(`[ReportView] Fetching ${reportType} report:`, {
         date: formattedDate,
         startDate: formattedStartDate,
-        endDate: formattedEndDate
-      });
-      
+        endDate: formattedEndDate,
+      })
+
       switch (reportType) {
         case "daily-sales":
-          response = await api.reports.getDailySales(formattedDate);
-          break;
+          response = await api.reports.getDailySales(formattedDate)
+          break
         case "payment-analytics":
-          response = await api.reports.getPaymentAnalytics(formattedStartDate, formattedEndDate);
-          break;
+          response = await api.reports.getPaymentAnalytics(formattedStartDate, formattedEndDate)
+          break
         case "channel-performance":
-          response = await api.reports.getChannelPerformance(formattedStartDate, formattedEndDate);
-          break;
+          response = await api.reports.getChannelPerformance(formattedStartDate, formattedEndDate)
+          break
         case "inventory":
-          response = await api.reports.getLowStock(10);
-          break;
+          response = await api.reports.getLowStock(10)
+          break
         case "sales-trend":
-          response = await api.reports.getSalesTrend("weekly", 8);
-          break;
+          response = await api.reports.getSalesTrend("weekly", 8)
+          break
         case "inventory-valuation":
-          response = await api.reports.getInventoryValuation();
-          break;
+          response = await api.reports.getInventoryValuation()
+          break
+        case "top-customers":
+          // @ts-ignore - Assuming api.reports.getTopCustomers is available from previous update
+          response = await api.reports.getTopCustomers(10)
+          break
         default:
-          response = await api.reports.getDailySales(formattedDate);
+          response = await api.reports.getDailySales(formattedDate)
       }
-      
+
       if (response) {
-        console.log(`[ReportView] ${reportType} report received:`, response);
-        setReportData(response);
-        setError(null);
+        console.log(`[ReportView] ${reportType} report received:`, response)
+        setReportData(response)
+        setError(null)
       } else {
-        setError("No report data available");
-        setReportData(null);
+        setError("No report data available")
+        setReportData(null)
       }
     } catch (error) {
-      console.error("[ReportView] Error fetching report:", error);
-      setError("Failed to fetch report data");
-      setReportData(null);
+      console.error("[ReportView] Error fetching report:", error)
+      setError("Failed to fetch report data")
+      setReportData(null)
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
   const handleDateSelect = (date: Date | undefined) => {
     if (date) {
-      setSelectedDate(date);
+      setSelectedDate(date)
       // Automatically fetch daily sales report for selected date
-      setReportType("daily-sales");
+      setReportType("daily-sales")
       // Switch to reports tab to show the data
-      setActiveTab("reports");
-      
-      console.log("[ReportView] Date selected:", format(date, "yyyy-MM-dd"));
+      setActiveTab("reports")
+
+      console.log("[ReportView] Date selected:", format(date, "yyyy-MM-dd"))
     }
-  };
+  }
 
   const handleReportTypeChange = (type: string) => {
-    setReportType(type);
-    console.log("[ReportView] Report type changed to:", type);
-  };
+    setReportType(type)
+    console.log("[ReportView] Report type changed to:", type)
+  }
 
   const exportReport = async (type: string, format = "csv") => {
     try {
-      setExportLoading(true);
-      
-      const token = localStorage.getItem("token");
+      setExportLoading(true)
+
+      const token = localStorage.getItem("token")
       if (!token) {
-        alert("Please login to export reports");
-        return;
+        alert("Please login to export reports")
+        return
       }
 
-      let params: any = {};
+      let params: any = {}
       if (type === "payment-analytics" || type === "channel-performance") {
         params = {
           startDate: format(dateRange.start, "yyyy-MM-dd"),
           endDate: format(dateRange.end, "yyyy-MM-dd"),
-        };
+        }
       }
       if (type === "daily-sales") {
         params = {
           date: format(selectedDate, "yyyy-MM-dd"),
-        };
+        }
+      }
+      // Top Customers exports usually don't need params or rely on default current week
+      if (type === "top-customers") {
+        params = { limit: 10 }
       }
 
-      console.log("[ReportView] Exporting report:", { type, format, params });
+      console.log("[ReportView] Exporting report:", { type, format, params })
 
       // Use the centralized API for export
-      const data = await api.reports.exportReport(type, format, params);
-      
+      const data = await api.reports.exportReport(type, format, params)
+
       if (data && data.url) {
-        window.open(data.url, '_blank');
+        window.open(data.url, "_blank")
       } else if (data && data.data) {
         // For CSV/Excel formats, create a download link
-        const blob = new Blob([data.data], { type: 'text/csv' });
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${type}-report-${Date.now()}.${format}`;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
+        const blob = new Blob([data.data], { type: "text/csv" })
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement("a")
+        a.href = url
+        a.download = `${type}-report-${Date.now()}.${format}`
+        document.body.appendChild(a)
+        a.click()
+        window.URL.revokeObjectURL(url)
+        document.body.removeChild(a)
       } else {
-        setError("Export failed: No data returned");
+        setError("Export failed: No data returned")
       }
     } catch (error) {
-      console.error("[ReportView] Export error:", error);
-      setError("Failed to export report");
+      console.error("[ReportView] Export error:", error)
+      setError("Failed to export report")
     } finally {
-      setExportLoading(false);
+      setExportLoading(false)
     }
-  };
+  }
 
   const renderReportContent = () => {
     if (!reportData) {
@@ -798,12 +781,10 @@ export default function ReportView() {
         <div className="h-96 flex items-center justify-center">
           <div className="text-center">
             <p className="text-muted-foreground mb-4">No report data available</p>
-            <p className="text-sm text-muted-foreground">
-              Select a date and report type to view data
-            </p>
+            <p className="text-sm text-muted-foreground">Select a date and report type to view data</p>
           </div>
         </div>
-      );
+      )
     }
 
     switch (reportType) {
@@ -860,21 +841,31 @@ export default function ReportView() {
                           cx="50%"
                           cy="50%"
                           labelLine={true}
-                          label={({ method, percentage }) => `${formatPaymentMethod(method)}: ${percentage.toFixed(1)}%`}
+                          label={({ method, percentage }) =>
+                            `${formatPaymentMethod(method)}: ${percentage.toFixed(1)}%`
+                          }
                           outerRadius={100}
                           fill="#8884d8"
                           dataKey="percentage"
                         >
-                          {reportData.paymentInsights.split.filter((item: any) => item.percentage > 0).map((entry: any, index: number) => (
-                            <Cell 
-                              key={`cell-${index}`} 
-                              fill={CHART_COLORS.paymentMethods[entry.method as keyof typeof CHART_COLORS.paymentMethods] || CHART_COLORS.paymentMethods.other} 
-                            />
-                          ))}
+                          {reportData.paymentInsights.split
+                            .filter((item: any) => item.percentage > 0)
+                            .map((entry: any, index: number) => (
+                              <Cell
+                                key={`cell-${index}`}
+                                fill={
+                                  CHART_COLORS.paymentMethods[
+                                    entry.method as keyof typeof CHART_COLORS.paymentMethods
+                                  ] || CHART_COLORS.paymentMethods.other
+                                }
+                              />
+                            ))}
                         </Pie>
                         <RechartsTooltip
                           formatter={(value, name, props) => {
-                            const item = reportData.paymentInsights.split.find((p: any) => p.method === props.payload.method);
+                            const item = reportData.paymentInsights.split.find(
+                              (p: any) => p.method === props.payload.method,
+                            )
                             return [
                               <div key="tooltip-content">
                                 <p className="font-medium">{formatPaymentMethod(props.payload.method)}</p>
@@ -882,8 +873,8 @@ export default function ReportView() {
                                 <p className="text-xs text-muted-foreground">
                                   Amount: {formatCurrency(item?.amount || 0)}
                                 </p>
-                              </div>
-                            ];
+                              </div>,
+                            ]
                           }}
                         />
                       </PieChart>
@@ -902,14 +893,17 @@ export default function ReportView() {
                 <CardContent>
                   <div className="h-64">
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={reportData.channelInsights.split} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                      <BarChart
+                        data={reportData.channelInsights.split}
+                        margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+                      >
                         <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.2} />
                         <XAxis dataKey="channel" tickFormatter={(value) => formatChannel(value)} />
                         <YAxis />
                         <RechartsTooltip
                           formatter={(value, name, props) => [
-                            name === 'amount' ? formatCurrency(value) : value,
-                            name === 'amount' ? 'Amount' : name === 'count' ? 'Orders' : name
+                            name === "amount" ? formatCurrency(value as number) : value,
+                            name === "amount" ? "Amount" : name === "count" ? "Orders" : name,
                           ]}
                         />
                         <Bar dataKey="amount" fill="#8884d8" name="Revenue" radius={[4, 4, 0, 0]} />
@@ -921,7 +915,7 @@ export default function ReportView() {
               </Card>
             )}
           </div>
-        );
+        )
 
       case "payment-analytics":
         return (
@@ -969,11 +963,13 @@ export default function ReportView() {
                           <span className="font-bold">{data.percentage?.toFixed(1) || 0}%</span>
                         </div>
                         <div className="w-full bg-gray-200 rounded-full h-2">
-                          <div 
+                          <div
                             className="h-2 rounded-full"
-                            style={{ 
+                            style={{
                               width: `${data.percentage || 0}%`,
-                              backgroundColor: CHART_COLORS.paymentMethods[method as keyof typeof CHART_COLORS.paymentMethods] || CHART_COLORS.paymentMethods.other
+                              backgroundColor:
+                                CHART_COLORS.paymentMethods[method as keyof typeof CHART_COLORS.paymentMethods] ||
+                                CHART_COLORS.paymentMethods.other,
                             }}
                           />
                         </div>
@@ -988,7 +984,7 @@ export default function ReportView() {
               </Card>
             )}
           </div>
-        );
+        )
 
       case "channel-performance":
         return (
@@ -1022,7 +1018,804 @@ export default function ReportView() {
               </CardContent>
             </Card>
           </div>
-        );
+        )
+
+      case "inventory":
+        return (
+          <div className="space-y-6">
+            {/* Summary Cards */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm text-muted-foreground">Total Low Stock</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-amber-600">{reportData?.summary?.totalLowStock || 0}</div>
+                  <p className="text-xs text-muted-foreground mt-1">Items below threshold</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm text-muted-foreground">Out of Stock</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-red-600">{reportData?.summary?.outOfStock || 0}</div>
+                  <p className="text-xs text-muted-foreground mt-1">Critical items</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm text-muted-foreground">Inventory Value</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">
+                    {formatCurrency(reportData?.summary?.totalInventoryValue || 0)}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">Total stock value</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm text-muted-foreground">Reorder Cost</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-blue-600">
+                    {formatCurrency(reportData?.summary?.totalReorderCost || 0)}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">Estimated to restock</p>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Priority Distribution */}
+            {reportData.summary && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <AlertTriangle className="w-5 h-5 text-amber-500" />
+                    Stock Priority Distribution
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between p-3 bg-red-50 rounded-lg">
+                      <div className="flex items-center gap-3">
+                        <div className="w-3 h-3 rounded-full bg-red-500" />
+                        <span className="font-medium">High Priority</span>
+                      </div>
+                      <span className="font-bold text-lg">{reportData.summary.highPriority || 0}</span>
+                    </div>
+                    <div className="flex items-center justify-between p-3 bg-amber-50 rounded-lg">
+                      <div className="flex items-center gap-3">
+                        <div className="w-3 h-3 rounded-full bg-amber-500" />
+                        <span className="font-medium">Medium Priority</span>
+                      </div>
+                      <span className="font-bold text-lg">{reportData.summary.mediumPriority || 0}</span>
+                    </div>
+                    <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
+                      <div className="flex items-center gap-3">
+                        <div className="w-3 h-3 rounded-full bg-blue-500" />
+                        <span className="font-medium">Low Priority</span>
+                      </div>
+                      <span className="font-bold text-lg">{reportData.summary.lowPriority || 0}</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Products Table */}
+            {reportData.products && reportData.products.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Package className="w-5 h-5 text-purple-500" />
+                    Low Stock Products
+                  </CardTitle>
+                  <CardDescription>Products requiring attention</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {reportData.products.map((product: any) => (
+                      <div key={product.id} className="border rounded-lg p-4 hover:bg-muted/30 transition-colors">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-2">
+                              <h4 className="font-semibold text-lg">{product.name}</h4>
+                              <span
+                                className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                  product.urgency === "high"
+                                    ? "bg-red-100 text-red-700"
+                                    : product.urgency === "medium"
+                                      ? "bg-amber-100 text-amber-700"
+                                      : "bg-blue-100 text-blue-700"
+                                }`}
+                              >
+                                {product.urgency?.toUpperCase()}
+                              </span>
+                            </div>
+                            <p className="text-sm text-muted-foreground mb-2">{product.description}</p>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                              <div>
+                                <p className="text-muted-foreground">SKU</p>
+                                <p className="font-medium">{product.sku}</p>
+                              </div>
+                              <div>
+                                <p className="text-muted-foreground">Current Stock</p>
+                                <p className="font-bold text-lg">{product.stock}</p>
+                              </div>
+                              <div>
+                                <p className="text-muted-foreground">Min Level</p>
+                                <p className="font-medium">{product.minStockLevel}</p>
+                              </div>
+                              <div>
+                                <p className="text-muted-foreground">Reorder Point</p>
+                                <p className="font-medium">{product.reorderPoint}</p>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex flex-col gap-2 md:text-right bg-muted/30 p-3 rounded-lg md:bg-transparent">
+                            <div>
+                              <p className="text-xs text-muted-foreground uppercase">Suggested Reorder</p>
+                              <p className="font-bold text-xl">{product.suggestedReorderQty} units</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-muted-foreground uppercase">Est. Cost</p>
+                              <p className="font-semibold">{formatCurrency(product.estimatedCost)}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-muted-foreground uppercase">Days of Stock</p>
+                              <p className="font-medium">{product.daysOfStock?.toFixed(1)} days</p>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="mt-3 p-3 bg-amber-50 rounded-md">
+                          <p className="text-sm font-medium text-amber-900">
+                            <AlertTriangle className="w-4 h-4 inline mr-2" />
+                            {product.reorderSuggestion}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Recommendations */}
+            {reportData.recommendations && reportData.recommendations.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Sparkles className="w-5 h-5 text-green-500" />
+                    Action Recommendations
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {reportData.recommendations.map((rec: any, index: number) => (
+                      <div key={index} className="flex items-start gap-3 p-3 border rounded-lg">
+                        <div
+                          className={`w-2 h-2 rounded-full mt-2 ${
+                            rec.priority === "HIGH"
+                              ? "bg-red-500"
+                              : rec.priority === "MEDIUM"
+                                ? "bg-amber-500"
+                                : "bg-blue-500"
+                          }`}
+                        />
+                        <div className="flex-1">
+                          <p className="font-medium">{rec.product}</p>
+                          <p className="text-sm text-muted-foreground mt-1">{rec.action}</p>
+                          <div className="flex gap-4 mt-2 text-sm">
+                            <span>
+                              <strong>Qty:</strong> {rec.quantity}
+                            </span>
+                            <span>
+                              <strong>Cost:</strong> {formatCurrency(rec.estimatedCost)}
+                            </span>
+                            <span
+                              className={`font-medium ${
+                                rec.priority === "HIGH"
+                                  ? "text-red-600"
+                                  : rec.priority === "MEDIUM"
+                                    ? "text-amber-600"
+                                    : "text-blue-600"
+                              }`}
+                            >
+                              {rec.priority}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        )
+
+      case "sales-trend":
+        return (
+          <div className="space-y-6">
+            {/* Summary Cards */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm text-muted-foreground">Total Revenue</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{formatCurrency(reportData?.summary?.totalRevenue || 0)}</div>
+                  <p className="text-xs text-muted-foreground mt-1">All periods</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm text-muted-foreground">Total Orders</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{reportData?.summary?.totalOrders || 0}</div>
+                  <p className="text-xs text-muted-foreground mt-1">Across all periods</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm text-muted-foreground">Avg Order Value</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{formatCurrency(reportData?.summary?.avgOrderValue || 0)}</div>
+                  <p className="text-xs text-muted-foreground mt-1">Per order</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm text-muted-foreground">Profit Margin</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-green-600">
+                    {reportData?.summary?.totalMargin?.toFixed(2) || 0}%
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">Overall margin</p>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Sales Trend Chart */}
+            {reportData.trend && reportData.trend.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <TrendingUp className="w-5 h-5 text-blue-500" />
+                    Sales Trend Over Time
+                  </CardTitle>
+                  <CardDescription>
+                    {reportData.period} analysis from {reportData.dateRange?.start} to {reportData.dateRange?.end}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="h-80">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart
+                        data={reportData.trend.map((item: any) => ({
+                          period: item.period,
+                          revenue: item.netSales || item.totalSales,
+                          orders: item.orders,
+                          profit: item.grossProfit,
+                        }))}
+                      >
+                        <defs>
+                          <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8} />
+                            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                          </linearGradient>
+                          <linearGradient id="colorProfit" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.8} />
+                            <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.2} />
+                        <XAxis dataKey="period" stroke="#9ca3af" fontSize={12} />
+                        <YAxis stroke="#9ca3af" fontSize={12} tickFormatter={(value) => `$${value}`} />
+                        <RechartsTooltip
+                          contentStyle={{
+                            backgroundColor: "rgba(17, 24, 39, 0.9)",
+                            border: "1px solid #374151",
+                            borderRadius: "8px",
+                          }}
+                          formatter={(value: any, name: string) => [
+                            formatCurrency(value),
+                            name === "revenue" ? "Revenue" : name === "profit" ? "Profit" : "Orders",
+                          ]}
+                        />
+                        <Legend />
+                        <Area
+                          type="monotone"
+                          dataKey="revenue"
+                          stroke="#3b82f6"
+                          fill="url(#colorRevenue)"
+                          strokeWidth={3}
+                          name="Revenue"
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="profit"
+                          stroke="#10b981"
+                          fill="url(#colorProfit)"
+                          strokeWidth={2}
+                          name="Profit"
+                        />
+                        <Line type="monotone" dataKey="orders" stroke="#ec4899" strokeWidth={2} name="Orders" />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Period Details */}
+            {reportData.trend && reportData.trend.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <BarChart3 className="w-5 h-5 text-purple-500" />
+                    Period-by-Period Breakdown
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {reportData.trend.map((period: any, index: number) => (
+                      <div key={index} className="border rounded-lg p-4 hover:bg-muted/30 transition-colors">
+                        <div className="flex items-center justify-between mb-3">
+                          <h4 className="font-semibold text-lg">{period.period}</h4>
+                          <span className="text-sm text-muted-foreground">{period.startDate}</span>
+                        </div>
+
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-3">
+                          <div>
+                            <p className="text-xs text-muted-foreground uppercase">Revenue</p>
+                            <p className="font-bold text-lg">{formatCurrency(period.netSales || period.totalSales)}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground uppercase">Orders</p>
+                            <p className="font-bold text-lg">{period.orders}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground uppercase">Items</p>
+                            <p className="font-bold text-lg">{period.items}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground uppercase">Profit</p>
+                            <p className="font-bold text-lg text-green-600">{formatCurrency(period.grossProfit)}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground uppercase">Margin</p>
+                            <p className="font-bold text-lg">{period.grossMargin?.toFixed(2)}%</p>
+                          </div>
+                        </div>
+
+                        {/* Top Products for this period */}
+                        {period.topProducts && period.topProducts.length > 0 && (
+                          <div className="mt-3 pt-3 border-t">
+                            <p className="text-sm font-medium mb-2 text-muted-foreground">Top Products:</p>
+                            <div className="flex flex-wrap gap-2">
+                              {period.topProducts.slice(0, 3).map((product: any, idx: number) => (
+                                <div key={idx} className="px-3 py-1.5 bg-primary/10 rounded-full text-sm">
+                                  <span className="font-medium">{product.name}</span>
+                                  <span className="text-muted-foreground ml-2">×{product.quantity}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Payment & Channel Breakdown */}
+                        <div className="mt-3 grid grid-cols-2 gap-3">
+                          <div className="p-2 bg-muted/30 rounded">
+                            <p className="text-xs text-muted-foreground mb-1">Payment Methods</p>
+                            <div className="flex flex-wrap gap-1 text-xs">
+                              {period.paymentBreakdown?.map((pm: any, idx: number) => (
+                                <span key={idx} className="px-2 py-0.5 bg-background rounded">
+                                  {formatPaymentMethod(pm.method)}: {pm.percentage.toFixed(1)}%
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="p-2 bg-muted/30 rounded">
+                            <p className="text-xs text-muted-foreground mb-1">Channels</p>
+                            <div className="text-xs">
+                              <span className="font-medium">Online:</span>{" "}
+                              {period.channelBreakdown?.onlinePercentage?.toFixed(1)}%<span className="mx-2">|</span>
+                              <span className="font-medium">Offline:</span>{" "}
+                              {(100 - (period.channelBreakdown?.onlinePercentage || 0)).toFixed(1)}%
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Best/Worst Period Comparison */}
+            {reportData.insights && (reportData.insights.bestPeriod || reportData.insights.worstPeriod) && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {reportData.insights.bestPeriod && (
+                  <Card className="border-green-200 bg-green-50/50">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-green-700">
+                        <Trophy className="w-5 h-5" />
+                        Best Performing Period
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-2">
+                        <p className="font-bold text-xl">{reportData.insights.bestPeriod.period}</p>
+                        <div className="grid grid-cols-2 gap-3 text-sm">
+                          <div>
+                            <p className="text-muted-foreground">Revenue</p>
+                            <p className="font-bold">{formatCurrency(reportData.insights.bestPeriod.netSales)}</p>
+                          </div>
+                          <div>
+                            <p className="text-muted-foreground">Orders</p>
+                            <p className="font-bold">{reportData.insights.bestPeriod.orders}</p>
+                          </div>
+                          <div>
+                            <p className="text-muted-foreground">Avg Order</p>
+                            <p className="font-bold">{formatCurrency(reportData.insights.bestPeriod.avgOrderValue)}</p>
+                          </div>
+                          <div>
+                            <p className="text-muted-foreground">Margin</p>
+                            <p className="font-bold">{reportData.insights.bestPeriod.grossMargin?.toFixed(2)}%</p>
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {reportData.insights.worstPeriod && (
+                  <Card className="border-amber-200 bg-amber-50/50">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-amber-700">
+                        <TrendingDown className="w-5 h-5" />
+                        Lowest Performing Period
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-2">
+                        <p className="font-bold text-xl">{reportData.insights.worstPeriod.period}</p>
+                        <div className="grid grid-cols-2 gap-3 text-sm">
+                          <div>
+                            <p className="text-muted-foreground">Revenue</p>
+                            <p className="font-bold">{formatCurrency(reportData.insights.worstPeriod.netSales)}</p>
+                          </div>
+                          <div>
+                            <p className="text-muted-foreground">Orders</p>
+                            <p className="font-bold">{reportData.insights.worstPeriod.orders}</p>
+                          </div>
+                          <div>
+                            <p className="text-muted-foreground">Avg Order</p>
+                            <p className="font-bold">{formatCurrency(reportData.insights.worstPeriod.avgOrderValue)}</p>
+                          </div>
+                          <div>
+                            <p className="text-muted-foreground">Margin</p>
+                            <p className="font-bold">{reportData.insights.worstPeriod.grossMargin?.toFixed(2)}%</p>
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+            )}
+          </div>
+        )
+
+      case "inventory-valuation":
+        return (
+          <div className="space-y-6">
+            {/* Summary Cards */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm text-muted-foreground">Total Products</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{reportData?.summary?.totalProducts || 0}</div>
+                  <p className="text-xs text-muted-foreground mt-1">{reportData?.summary?.totalSKUs || 0} SKUs</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm text-muted-foreground">Cost Value</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{formatCurrency(reportData?.summary?.totalCostValue || 0)}</div>
+                  <p className="text-xs text-muted-foreground mt-1">At cost price</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm text-muted-foreground">Retail Value</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-green-600">
+                    {formatCurrency(reportData?.summary?.totalRetailValue || 0)}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">At selling price</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm text-muted-foreground">Potential Profit</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-blue-600">
+                    {formatCurrency(reportData?.summary?.totalPotentialProfit || 0)}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {reportData?.summary?.avgProfitMargin?.toFixed(2)}% margin
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Health Score */}
+            {reportData.summary?.healthScore !== undefined && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Activity className="w-5 h-5 text-green-500" />
+                    Inventory Health Score
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center gap-4">
+                    <div className="flex-1">
+                      <div className="w-full bg-gray-200 rounded-full h-4">
+                        <div
+                          className={`h-4 rounded-full transition-all ${
+                            reportData.summary.healthScore >= 80
+                              ? "bg-green-500"
+                              : reportData.summary.healthScore >= 60
+                                ? "bg-amber-500"
+                                : "bg-red-500"
+                          }`}
+                          style={{ width: `${reportData.summary.healthScore}%` }}
+                        />
+                      </div>
+                    </div>
+                    <div className="text-3xl font-bold">{reportData.summary.healthScore}/100</div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-4 mt-4 text-sm">
+                    <div>
+                      <p className="text-muted-foreground">Turnover Rate</p>
+                      <p className="font-bold">{reportData.summary.inventoryTurnover?.toFixed(2)}x</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Avg Months Stock</p>
+                      <p className="font-bold">{reportData.summary.avgMonthsOfStock?.toFixed(1)} months</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Total Stock Units</p>
+                      <p className="font-bold">{reportData.summary.totalStock}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Status Breakdown */}
+            {reportData.breakdown?.byStatus && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Package className="w-5 h-5 text-purple-500" />
+                    Stock Status Distribution
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                    <div className="p-3 bg-green-50 rounded-lg text-center">
+                      <p className="text-sm text-muted-foreground mb-1">Healthy</p>
+                      <p className="text-2xl font-bold text-green-600">{reportData.breakdown.byStatus.healthy || 0}</p>
+                    </div>
+                    <div className="p-3 bg-amber-50 rounded-lg text-center">
+                      <p className="text-sm text-muted-foreground mb-1">Low Stock</p>
+                      <p className="text-2xl font-bold text-amber-600">{reportData.breakdown.byStatus.lowStock || 0}</p>
+                    </div>
+                    <div className="p-3 bg-red-50 rounded-lg text-center">
+                      <p className="text-sm text-muted-foreground mb-1">Out of Stock</p>
+                      <p className="text-2xl font-bold text-red-600">{reportData.breakdown.byStatus.outOfStock || 0}</p>
+                    </div>
+                    <div className="p-3 bg-blue-50 rounded-lg text-center">
+                      <p className="text-sm text-muted-foreground mb-1">Overstocked</p>
+                      <p className="text-2xl font-bold text-blue-600">
+                        {reportData.breakdown.byStatus.overstocked || 0}
+                      </p>
+                    </div>
+                    <div className="p-3 bg-gray-50 rounded-lg text-center">
+                      <p className="text-sm text-muted-foreground mb-1">Below Min</p>
+                      <p className="text-2xl font-bold text-gray-600">
+                        {reportData.breakdown.byStatus.belowMinimum || 0}
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Detailed Product Valuation */}
+            {reportData.valuation && reportData.valuation.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <BarChart3 className="w-5 h-5 text-indigo-500" />
+                    Product Valuation Details
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {reportData.valuation.map((product: any) => (
+                      <div key={product.id} className="border rounded-lg p-4 hover:bg-muted/30 transition-colors">
+                        <div className="flex items-center justify-between mb-3">
+                          <div>
+                            <h4 className="font-semibold text-lg">{product.name}</h4>
+                            <p className="text-sm text-muted-foreground">
+                              {product.sku} • {product.category}
+                            </p>
+                          </div>
+                          <span
+                            className={`px-3 py-1 rounded-full text-sm font-medium ${
+                              product.statusColor === "green"
+                                ? "bg-green-100 text-green-700"
+                                : product.statusColor === "yellow"
+                                  ? "bg-amber-100 text-amber-700"
+                                  : "bg-red-100 text-red-700"
+                            }`}
+                          >
+                            {product.status}
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-2 md:grid-cols-6 gap-3 text-sm">
+                          <div>
+                            <p className="text-muted-foreground">Stock</p>
+                            <p className="font-bold text-lg">{product.stock} units</p>
+                          </div>
+                          <div>
+                            <p className="text-muted-foreground">Cost Value</p>
+                            <p className="font-bold">{formatCurrency(product.costValue)}</p>
+                          </div>
+                          <div>
+                            <p className="text-muted-foreground">Retail Value</p>
+                            <p className="font-bold text-green-600">{formatCurrency(product.retailValue)}</p>
+                          </div>
+                          <div>
+                            <p className="text-muted-foreground">Potential Profit</p>
+                            <p className="font-bold text-blue-600">{formatCurrency(product.potentialProfit)}</p>
+                          </div>
+                          <div>
+                            <p className="text-muted-foreground">Margin</p>
+                            <p className="font-bold">{product.profitMargin?.toFixed(2)}%</p>
+                          </div>
+                          <div>
+                            <p className="text-muted-foreground">Turnover</p>
+                            <p className="font-bold">{product.stockTurnover?.toFixed(2)}x</p>
+                          </div>
+                        </div>
+
+                        <div className="mt-3 grid grid-cols-3 gap-3 text-xs">
+                          <div className="p-2 bg-muted/50 rounded">
+                            <p className="text-muted-foreground">Avg Monthly Sales</p>
+                            <p className="font-medium">{product.avgMonthlySales} units</p>
+                          </div>
+                          <div className="p-2 bg-muted/50 rounded">
+                            <p className="text-muted-foreground">Months of Stock</p>
+                            <p className="font-medium">{product.monthsOfStock?.toFixed(1)} months</p>
+                          </div>
+                          <div className="p-2 bg-muted/50 rounded">
+                            <p className="text-muted-foreground">90-Day Sales</p>
+                            <p className="font-medium">{product.salesLast90Days} units</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        )
+
+      case "top-customers":
+        return (
+          <div className="space-y-6">
+            <Card className="border-border/50 shadow-sm">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <Trophy className="w-5 h-5 text-yellow-500" />
+                      Top Customers of the Week
+                    </CardTitle>
+                    <CardDescription>
+                      Most active customers by product volume ({reportData?.period?.start} to {reportData?.period?.end})
+                    </CardDescription>
+                  </div>
+                  <div className="p-2 bg-yellow-50 rounded-lg">
+                    <Users className="w-5 h-5 text-yellow-600" />
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {reportData?.customers?.length > 0 ? (
+                    reportData.customers.map((customer: any, index: number) => (
+                      <motion.div
+                        key={customer.id}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: index * 0.1 }}
+                        className="flex flex-col md:flex-row md:items-center justify-between p-4 border rounded-xl hover:bg-muted/30 transition-all duration-300 hover:shadow-md"
+                      >
+                        <div className="flex items-center gap-4 mb-3 md:mb-0">
+                          <div
+                            className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg shadow-sm ${
+                              index === 0
+                                ? "bg-yellow-100 text-yellow-600 border-2 border-yellow-200"
+                                : index === 1
+                                  ? "bg-gray-100 text-gray-600 border-2 border-gray-200"
+                                  : index === 2
+                                    ? "bg-orange-100 text-orange-600 border-2 border-orange-200"
+                                    : "bg-slate-100 text-slate-600"
+                            }`}
+                          >
+                            #{index + 1}
+                          </div>
+                          <div>
+                            <p className="font-semibold text-lg">{customer.name}</p>
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <UserCheck className="w-3 h-3" />
+                              {customer.email || customer.phone || "No contact info"}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between md:justify-end gap-6 md:gap-8 bg-muted/20 p-3 md:p-0 rounded-lg md:bg-transparent">
+                          <div className="text-center md:text-right">
+                            <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
+                              Orders
+                            </p>
+                            <p className="font-bold text-lg">{customer.totalOrders}</p>
+                          </div>
+                          <div className="text-center md:text-right">
+                            <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
+                              Products
+                            </p>
+                            <p className="font-bold text-lg text-primary">{customer.totalProductsPurchased}</p>
+                          </div>
+                          <div className="text-center md:text-right">
+                            <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
+                              Spent
+                            </p>
+                            <p className="font-bold text-lg">{formatCurrency(customer.totalSpent)}</p>
+                          </div>
+                        </div>
+                      </motion.div>
+                    ))
+                  ) : (
+                    <div className="text-center py-12">
+                      <Users className="w-12 h-12 mx-auto text-muted-foreground/30 mb-4" />
+                      <p className="text-muted-foreground">No customer data available for this week</p>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )
 
       default:
         return (
@@ -1030,10 +1823,9 @@ export default function ReportView() {
             <CardHeader>
               <CardTitle>{reportType.replace("-", " ").toUpperCase()} Report</CardTitle>
               <CardDescription>
-                {reportType === "daily-sales" 
+                {reportType === "daily-sales"
                   ? `Date: ${format(selectedDate, "MMMM dd, yyyy")}`
-                  : `Date Range: ${format(dateRange.start, "MMM dd, yyyy")} - ${format(dateRange.end, "MMM dd, yyyy")}`
-                }
+                  : `Date Range: ${format(dateRange.start, "MMM dd, yyyy")} - ${format(dateRange.end, "MMM dd, yyyy")}`}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -1041,15 +1833,13 @@ export default function ReportView() {
                 <pre className="text-sm bg-muted p-4 rounded-lg overflow-auto max-h-96">
                   {JSON.stringify(reportData, null, 2)}
                 </pre>
-                <p className="text-sm text-muted-foreground">
-                  Raw report data for {reportType.replace("-", " ")}
-                </p>
+                <p className="text-sm text-muted-foreground">Raw report data for {reportType.replace("-", " ")}</p>
               </div>
             </CardContent>
           </Card>
-        );
+        )
     }
-  };
+  }
 
   // Calculate stats from actual data or show 0 if no data
   const todayStats = dashboardData?.overview?.today || {
@@ -1057,8 +1847,8 @@ export default function ReportView() {
     orders: 0,
     avgOrder: 0,
     totalItems: 0,
-    netRevenue: 0
-  };
+    netRevenue: 0,
+  }
 
   const stats = [
     {
@@ -1093,7 +1883,7 @@ export default function ReportView() {
       iconBg: "bg-amber-500/10",
       iconColor: "text-amber-600",
     },
-  ];
+  ]
 
   const paymentStats = [
     {
@@ -1122,11 +1912,12 @@ export default function ReportView() {
       value: formatChannel(dashboardData?.overview?.channels?.dominantChannel || "online"),
       icon: Globe,
       color: CHART_COLORS.channels.online,
-      percentage: dashboardData?.overview?.channels?.dominantChannel === "online"
-        ? dashboardData?.overview?.channels?.onlinePercentage || 0
-        : 100 - (dashboardData?.overview?.channels?.onlinePercentage || 0),
+      percentage:
+        dashboardData?.overview?.channels?.dominantChannel === "online"
+          ? dashboardData?.overview?.channels?.onlinePercentage || 0
+          : 100 - (dashboardData?.overview?.channels?.onlinePercentage || 0),
     },
-  ];
+  ]
 
   if (loading && !reportData) {
     return (
@@ -1157,7 +1948,7 @@ export default function ReportView() {
           </motion.p>
         </motion.div>
       </div>
-    );
+    )
   }
 
   if (error || !dashboardData) {
@@ -1178,13 +1969,13 @@ export default function ReportView() {
               <RefreshCw className="w-4 h-4 mr-2" />
               Retry
             </Button>
-            <Button variant="outline" onClick={() => window.location.href = '/login'}>
+            <Button variant="outline" onClick={() => (window.location.href = "/login")}>
               Login
             </Button>
           </div>
         </motion.div>
       </div>
-    );
+    )
   }
 
   return (
@@ -1231,10 +2022,7 @@ export default function ReportView() {
               <div className="flex items-center gap-2">
                 <Popover>
                   <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className="rounded-xl justify-start text-left font-normal bg-transparent"
-                    >
+                    <Button variant="outline" className="rounded-xl justify-start text-left font-normal bg-transparent">
                       <CalendarIcon className="mr-2 h-4 w-4" />
                       {format(selectedDate, "MMM dd, yyyy")}
                     </Button>
@@ -1249,16 +2037,12 @@ export default function ReportView() {
                     />
                   </PopoverContent>
                 </Popover>
-                
+
                 <Popover>
                   <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className="rounded-xl justify-start text-left font-normal bg-transparent"
-                    >
+                    <Button variant="outline" className="rounded-xl justify-start text-left font-normal bg-transparent">
                       <CalendarIcon className="mr-2 h-4 w-4" />
-                      {format(dateRange.start, "MMM dd")} -{" "}
-                      {format(dateRange.end, "MMM dd, yyyy")}
+                      {format(dateRange.start, "MMM dd")} - {format(dateRange.end, "MMM dd, yyyy")}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="end">
@@ -1268,9 +2052,7 @@ export default function ReportView() {
                         <Calendar
                           mode="single"
                           selected={dateRange.start}
-                          onSelect={(date) =>
-                            date && setDateRange({ ...dateRange, start: date })
-                          }
+                          onSelect={(date) => date && setDateRange({ ...dateRange, start: date })}
                           initialFocus
                         />
                       </div>
@@ -1279,9 +2061,7 @@ export default function ReportView() {
                         <Calendar
                           mode="single"
                           selected={dateRange.end}
-                          onSelect={(date) =>
-                            date && setDateRange({ ...dateRange, end: date })
-                          }
+                          onSelect={(date) => date && setDateRange({ ...dateRange, end: date })}
                           initialFocus
                         />
                       </div>
@@ -1297,7 +2077,11 @@ export default function ReportView() {
                   className="rounded-xl"
                   disabled={exportLoading}
                 >
-                  {exportLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
+                  {exportLoading ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Download className="w-4 h-4 mr-2" />
+                  )}
                   Export CSV
                 </Button>
                 <Button
@@ -1306,9 +2090,7 @@ export default function ReportView() {
                   className="rounded-xl hover:bg-accent transition-all bg-transparent"
                   disabled={loading}
                 >
-                  <RefreshCw
-                    className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`}
-                  />
+                  <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
                   Refresh
                 </Button>
               </div>
@@ -1390,10 +2172,7 @@ export default function ReportView() {
                       className="w-10 h-10 rounded-xl flex items-center justify-center"
                       style={{ backgroundColor: `${stat.color}20` }}
                     >
-                      <stat.icon
-                        className="w-5 h-5"
-                        style={{ color: stat.color }}
-                      />
+                      <stat.icon className="w-5 h-5" style={{ color: stat.color }} />
                     </div>
                   </div>
                 </CardHeader>
@@ -1419,9 +2198,7 @@ export default function ReportView() {
                       }}
                     />
                   </div>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    {stat.percentage.toFixed(1)}% of total
-                  </p>
+                  <p className="text-xs text-muted-foreground mt-2">{stat.percentage.toFixed(1)}% of total</p>
                 </CardContent>
               </Card>
             </motion.div>
@@ -1434,11 +2211,7 @@ export default function ReportView() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 1.0, duration: 0.6 }}
         >
-          <Tabs
-            value={activeTab}
-            onValueChange={setActiveTab}
-            className="space-y-8"
-          >
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-8">
             <TabsList className="grid w-full grid-cols-4 p-1.5 bg-muted/50 rounded-2xl h-auto">
               <TabsTrigger
                 value="overview"
@@ -1484,9 +2257,7 @@ export default function ReportView() {
                         <TrendingUp className="w-5 h-5 text-purple-500" />
                         Sales Trend
                       </CardTitle>
-                      <CardDescription>
-                        Weekly revenue performance
-                      </CardDescription>
+                      <CardDescription>Weekly revenue performance</CardDescription>
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-4">
@@ -1499,7 +2270,9 @@ export default function ReportView() {
                               </div>
                               <div className="text-right">
                                 <p className="font-bold">{formatCurrency(item.totalSales)}</p>
-                                <p className="text-sm text-muted-foreground">Avg: {formatCurrency(item.avgOrderValue)}</p>
+                                <p className="text-sm text-muted-foreground">
+                                  Avg: {formatCurrency(item.avgOrderValue)}
+                                </p>
                               </div>
                             </div>
                           ))
@@ -1507,11 +2280,7 @@ export default function ReportView() {
                           <div className="h-80 flex items-center justify-center">
                             <div className="text-center">
                               <p className="text-muted-foreground">No sales trend data available</p>
-                              <Button 
-                                variant="outline" 
-                                className="mt-4"
-                                onClick={fetchDashboardData}
-                              >
+                              <Button variant="outline" className="mt-4 bg-transparent" onClick={fetchDashboardData}>
                                 <RefreshCw className="w-4 h-4 mr-2" />
                                 Refresh Data
                               </Button>
@@ -1580,9 +2349,7 @@ export default function ReportView() {
                       <BarChart3 className="w-5 h-5 text-blue-500" />
                       Payment Method Distribution
                     </CardTitle>
-                    <CardDescription>
-                      How customers are paying
-                    </CardDescription>
+                    <CardDescription>How customers are paying</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-4">
@@ -1593,14 +2360,19 @@ export default function ReportView() {
                             <div key={index} className="space-y-2">
                               <div className="flex justify-between">
                                 <span className="font-medium">{formatPaymentMethod(payment.method)}</span>
-                                <span className="font-bold">{formatCurrency(payment.amount)} ({payment.percentage.toFixed(1)}%)</span>
+                                <span className="font-bold">
+                                  {formatCurrency(payment.amount)} ({payment.percentage.toFixed(1)}%)
+                                </span>
                               </div>
                               <div className="w-full bg-gray-200 rounded-full h-2">
-                                <div 
+                                <div
                                   className="h-2 rounded-full"
-                                  style={{ 
+                                  style={{
                                     width: `${payment.percentage}%`,
-                                    backgroundColor: CHART_COLORS.paymentMethods[payment.method as keyof typeof CHART_COLORS.paymentMethods] || CHART_COLORS.paymentMethods.other
+                                    backgroundColor:
+                                      CHART_COLORS.paymentMethods[
+                                        payment.method as keyof typeof CHART_COLORS.paymentMethods
+                                      ] || CHART_COLORS.paymentMethods.other,
                                   }}
                                 />
                               </div>
@@ -1626,34 +2398,11 @@ export default function ReportView() {
               >
                 <Card className="border-border/50 hover:shadow-xl transition-shadow duration-300">
                   <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <CardTitle className="flex items-center gap-2">
-                          <Activity className="w-5 h-5 text-blue-500" />
-                          Sales Trend Analysis
-                        </CardTitle>
-                        <CardDescription>
-                          Revenue and order trends over time
-                        </CardDescription>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button variant="outline" size="sm" onClick={() => exportReport("sales-trend", "csv")}>
-                          <Download className="w-4 h-4 mr-2" />
-                          Export CSV
-                        </Button>
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          onClick={() => {
-                            setReportType("sales-trend");
-                            fetchSpecificReport();
-                          }}
-                        >
-                          <RefreshCw className="w-4 h-4 mr-2" />
-                          Refresh
-                        </Button>
-                      </div>
-                    </div>
+                    <CardTitle className="flex items-center gap-2">
+                      <Activity className="w-5 h-5 text-blue-500" />
+                      Sales Trend Analysis
+                    </CardTitle>
+                    <CardDescription>Revenue and order trends over time</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <SalesTrendChart data={dashboardData.analytics.salesTrend} />
@@ -1673,9 +2422,7 @@ export default function ReportView() {
                         <PieChartIcon className="w-5 h-5 text-purple-500" />
                         Payment Method Distribution
                       </CardTitle>
-                      <CardDescription>
-                        How customers prefer to pay
-                      </CardDescription>
+                      <CardDescription>How customers prefer to pay</CardDescription>
                     </CardHeader>
                     <CardContent>
                       <PaymentMethodPieChart data={dashboardData.analytics.paymentSplit} />
@@ -1694,9 +2441,7 @@ export default function ReportView() {
                         <Globe className="w-5 h-5 text-green-500" />
                         Channel Performance
                       </CardTitle>
-                      <CardDescription>
-                        Online vs. Offline sales comparison
-                      </CardDescription>
+                      <CardDescription>Online vs. Offline sales comparison</CardDescription>
                     </CardHeader>
                     <CardContent>
                       <ChannelComparisonChart
@@ -1721,9 +2466,7 @@ export default function ReportView() {
                         <BarChart2 className="w-5 h-5 text-amber-500" />
                         Hourly Sales Pattern
                       </CardTitle>
-                      <CardDescription>
-                        Sales distribution throughout the day
-                      </CardDescription>
+                      <CardDescription>Sales distribution throughout the day</CardDescription>
                     </CardHeader>
                     <CardContent>
                       <HourlySalesChart data={dashboardData.analytics.hourlyBreakdown} />
@@ -1742,9 +2485,7 @@ export default function ReportView() {
                         <Target className="w-5 h-5 text-pink-500" />
                         Performance Metrics
                       </CardTitle>
-                      <CardDescription>
-                        Multi-dimensional performance analysis
-                      </CardDescription>
+                      <CardDescription>Multi-dimensional performance analysis</CardDescription>
                     </CardHeader>
                     <CardContent>
                       <PerformanceRadarChart data={dashboardData.analytics.salesTrend} />
@@ -1764,9 +2505,7 @@ export default function ReportView() {
                       <TrendingUp className="w-5 h-5 text-emerald-500" />
                       Detailed Sales Statistics
                     </CardTitle>
-                    <CardDescription>
-                      Comprehensive breakdown of sales metrics
-                    </CardDescription>
+                    <CardDescription>Comprehensive breakdown of sales metrics</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -1802,8 +2541,14 @@ export default function ReportView() {
                           <div className="flex justify-between items-center p-3 bg-muted/30 rounded-lg">
                             <span className="text-sm">Conversion Rate</span>
                             <span className="font-bold">
-                              {dashboardData.overview.today.orders > 0 ? 
-                                ((dashboardData.overview.today.orders / Math.max(1, dashboardData.overview.today.totalItems)) * 100).toFixed(1) : 0}%
+                              {dashboardData.overview.today.orders > 0
+                                ? (
+                                    (dashboardData.overview.today.orders /
+                                      Math.max(1, dashboardData.overview.today.totalItems)) *
+                                    100
+                                  ).toFixed(1)
+                                : 0}
+                              %
                             </span>
                           </div>
                         </div>
@@ -1814,21 +2559,33 @@ export default function ReportView() {
                         <div className="space-y-3">
                           <div className="flex justify-between items-center p-3 bg-muted/30 rounded-lg">
                             <div className="flex items-center gap-2">
-                              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: CHART_COLORS.channels.online }} />
+                              <div
+                                className="w-3 h-3 rounded-full"
+                                style={{ backgroundColor: CHART_COLORS.channels.online }}
+                              />
                               <span className="text-sm">Online</span>
                             </div>
-                            <span className="font-bold">{formatPercentage(dashboardData.overview.channels.onlinePercentage)}</span>
+                            <span className="font-bold">
+                              {formatPercentage(dashboardData.overview.channels.onlinePercentage)}
+                            </span>
                           </div>
                           <div className="flex justify-between items-center p-3 bg-muted/30 rounded-lg">
                             <div className="flex items-center gap-2">
-                              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: CHART_COLORS.channels.offline }} />
+                              <div
+                                className="w-3 h-3 rounded-full"
+                                style={{ backgroundColor: CHART_COLORS.channels.offline }}
+                              />
                               <span className="text-sm">Offline</span>
                             </div>
-                            <span className="font-bold">{formatPercentage(dashboardData.overview.channels.offlinePercentage)}</span>
+                            <span className="font-bold">
+                              {formatPercentage(dashboardData.overview.channels.offlinePercentage)}
+                            </span>
                           </div>
                           <div className="flex justify-between items-center p-3 bg-muted/30 rounded-lg">
                             <span className="text-sm">Dominant Channel</span>
-                            <span className="font-bold capitalize">{dashboardData.overview.channels.dominantChannel}</span>
+                            <span className="font-bold capitalize">
+                              {dashboardData.overview.channels.dominantChannel}
+                            </span>
                           </div>
                         </div>
                       </div>
@@ -1852,9 +2609,7 @@ export default function ReportView() {
                         <BarChart3 className="w-5 h-5 text-indigo-500" />
                         Revenue vs Orders Comparison
                       </CardTitle>
-                      <CardDescription>
-                        Daily sales and order correlation
-                      </CardDescription>
+                      <CardDescription>Daily sales and order correlation</CardDescription>
                     </CardHeader>
                     <CardContent>
                       <RevenueOrdersChart data={dashboardData.analytics.salesTrend} />
@@ -1873,9 +2628,7 @@ export default function ReportView() {
                         <PieChartIcon className="w-5 h-5 text-rose-500" />
                         Top Products Revenue Share
                       </CardTitle>
-                      <CardDescription>
-                        Contribution of top 5 products
-                      </CardDescription>
+                      <CardDescription>Contribution of top 5 products</CardDescription>
                     </CardHeader>
                     <CardContent>
                       <div className="h-72">
@@ -1892,15 +2645,13 @@ export default function ReportView() {
                               dataKey="revenue"
                             >
                               {dashboardData.analytics.topProducts.slice(0, 5).map((entry, index) => (
-                                <Cell 
-                                  key={`cell-${index}`} 
-                                  fill={['#8884d8', '#82ca9d', '#ffc658', '#ff8042', '#0088fe'][index % 5]} 
+                                <Cell
+                                  key={`cell-${index}`}
+                                  fill={["#8884d8", "#82ca9d", "#ffc658", "#ff8042", "#0088fe"][index % 5]}
                                 />
                               ))}
                             </Pie>
-                            <RechartsTooltip
-                              formatter={(value) => [formatCurrency(value), 'Revenue']}
-                            />
+                            <RechartsTooltip formatter={(value) => [formatCurrency(value as number), "Revenue"]} />
                           </PieChart>
                         </ResponsiveContainer>
                       </div>
@@ -1920,26 +2671,35 @@ export default function ReportView() {
                       <TrendingUp className="w-5 h-5 text-emerald-500" />
                       Growth Analysis
                     </CardTitle>
-                    <CardDescription>
-                      Week-over-week performance metrics
-                    </CardDescription>
+                    <CardDescription>Week-over-week performance metrics</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-6">
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         {dashboardData.analytics.salesTrend.slice(-4).map((week, index, array) => {
-                          const previousWeek = array[index - 1];
-                          const revenueGrowth = previousWeek ? 
-                            ((week.totalSales - previousWeek.totalSales) / previousWeek.totalSales * 100) : 0;
-                          const orderGrowth = previousWeek ? 
-                            ((week.orderCount - previousWeek.orderCount) / previousWeek.orderCount * 100) : 0;
-                          
+                          const previousWeek = array[index - 1]
+                          const revenueGrowth = previousWeek
+                            ? ((week.totalSales - previousWeek.totalSales) / previousWeek.totalSales) * 100
+                            : 0
+                          const orderGrowth = previousWeek
+                            ? ((week.orderCount - previousWeek.orderCount) / previousWeek.orderCount) * 100
+                            : 0
+
                           return (
-                            <div key={week.period} className="border rounded-xl p-4 hover:bg-muted/30 transition-colors">
+                            <div
+                              key={week.period}
+                              className="border rounded-xl p-4 hover:bg-muted/30 transition-colors"
+                            >
                               <div className="flex justify-between items-start mb-3">
                                 <h4 className="font-medium">{week.period}</h4>
-                                <div className={`flex items-center ${revenueGrowth >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-                                  {revenueGrowth >= 0 ? <TrendingUp className="w-4 h-4 mr-1" /> : <TrendingDown className="w-4 h-4 mr-1" />}
+                                <div
+                                  className={`flex items-center ${revenueGrowth >= 0 ? "text-emerald-500" : "text-red-500"}`}
+                                >
+                                  {revenueGrowth >= 0 ? (
+                                    <TrendingUp className="w-4 h-4 mr-1" />
+                                  ) : (
+                                    <TrendingDown className="w-4 h-4 mr-1" />
+                                  )}
                                   <span className="text-sm font-medium">{revenueGrowth.toFixed(1)}%</span>
                                 </div>
                               </div>
@@ -1952,12 +2712,13 @@ export default function ReportView() {
                                   <p className="text-sm text-muted-foreground">Orders</p>
                                   <p className="font-bold">{week.orderCount}</p>
                                   <p className="text-xs text-muted-foreground">
-                                    {orderGrowth >= 0 ? '+' : ''}{orderGrowth.toFixed(1)}% from previous
+                                    {orderGrowth >= 0 ? "+" : ""}
+                                    {orderGrowth.toFixed(1)}% from previous
                                   </p>
                                 </div>
                               </div>
                             </div>
-                          );
+                          )
                         })}
                       </div>
                     </div>
@@ -1979,9 +2740,7 @@ export default function ReportView() {
                       <Download className="w-5 h-5 text-blue-500" />
                       Report Viewer
                     </CardTitle>
-                    <CardDescription>
-                      View and export detailed reports for selected dates
-                    </CardDescription>
+                    <CardDescription>View and export detailed reports for selected dates</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-6">
@@ -2029,6 +2788,15 @@ export default function ReportView() {
                         >
                           Inventory Valuation
                         </Button>
+                        <Button
+                          variant={reportType === "top-customers" ? "default" : "outline"}
+                          onClick={() => handleReportTypeChange("top-customers")}
+                          size="sm"
+                          className="border-yellow-200 hover:bg-yellow-50 hover:text-yellow-700"
+                        >
+                          <Trophy className="w-4 h-4 mr-2 text-yellow-500" />
+                          Top Customers
+                        </Button>
                       </div>
 
                       {/* Date Information */}
@@ -2042,14 +2810,19 @@ export default function ReportView() {
                                   <p>Date: {format(selectedDate, "MMMM dd, yyyy")}</p>
                                   <p>Report Type: Daily Sales Report</p>
                                 </>
-                              ) : reportType === "inventory" || reportType === "inventory-valuation" ? (
+                              ) : reportType === "inventory" ||
+                                reportType === "inventory-valuation" ||
+                                reportType === "top-customers" ? (
                                 <>
-                                  <p>Date: Current Inventory</p>
+                                  <p>Date: Current / This Week</p>
                                   <p>Report Type: {reportType.replace("-", " ").toUpperCase()}</p>
                                 </>
                               ) : (
                                 <>
-                                  <p>Date Range: {format(dateRange.start, "MMM dd, yyyy")} to {format(dateRange.end, "MMM dd, yyyy")}</p>
+                                  <p>
+                                    Date Range: {format(dateRange.start, "MMM dd, yyyy")} to{" "}
+                                    {format(dateRange.end, "MMM dd, yyyy")}
+                                  </p>
                                   <p>Report Type: {reportType.replace("-", " ").toUpperCase()}</p>
                                 </>
                               )}
@@ -2095,11 +2868,7 @@ export default function ReportView() {
                           <div className="text-center">
                             <AlertCircle className="w-8 h-8 text-red-500 mx-auto mb-4" />
                             <p className="text-muted-foreground">{error}</p>
-                            <Button
-                              onClick={fetchSpecificReport}
-                              variant="outline"
-                              className="mt-4"
-                            >
+                            <Button onClick={fetchSpecificReport} variant="outline" className="mt-4 bg-transparent">
                               Retry
                             </Button>
                           </div>
@@ -2123,9 +2892,7 @@ export default function ReportView() {
                       <Download className="w-5 h-5 text-blue-500" />
                       Quick Export
                     </CardTitle>
-                    <CardDescription>
-                      Download reports in various formats
-                    </CardDescription>
+                    <CardDescription>Download reports in various formats</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -2181,9 +2948,7 @@ export default function ReportView() {
                           <TrendingUp className="w-4 h-4" />
                           <span className="font-medium">Sales Trend CSV</span>
                         </div>
-                        <p className="text-sm text-muted-foreground text-left">
-                          Last 8 weeks data
-                        </p>
+                        <p className="text-sm text-muted-foreground text-left">Last 8 weeks data</p>
                       </Button>
                       <Button
                         onClick={() => exportReport("inventory", "csv")}
@@ -2195,23 +2960,19 @@ export default function ReportView() {
                           <Package className="w-4 h-4" />
                           <span className="font-medium">Inventory Report CSV</span>
                         </div>
-                        <p className="text-sm text-muted-foreground text-left">
-                          Low stock items and alerts
-                        </p>
+                        <p className="text-sm text-muted-foreground text-left">Low stock items and alerts</p>
                       </Button>
                       <Button
-                        onClick={() => exportReport("inventory-valuation", "csv")}
+                        onClick={() => exportReport("top-customers", "csv")}
                         variant="outline"
                         className="h-auto p-4 flex-col items-start justify-start"
                         disabled={exportLoading}
                       >
                         <div className="flex items-center gap-2 mb-2">
-                          <DollarSign className="w-4 h-4" />
-                          <span className="font-medium">Inventory Valuation CSV</span>
+                          <Users className="w-4 h-4" />
+                          <span className="font-medium">Top Customers CSV</span>
                         </div>
-                        <p className="text-sm text-muted-foreground text-left">
-                          Stock value and profitability
-                        </p>
+                        <p className="text-sm text-muted-foreground text-left">This week's top buyers</p>
                       </Button>
                     </div>
                   </CardContent>
@@ -2233,13 +2994,12 @@ export default function ReportView() {
             {dateRange.start.toLocaleDateString()} to {dateRange.end.toLocaleDateString()}
           </p>
           <p className="mt-2 text-xs">
-            {activeTab === "reports" && reportData 
+            {activeTab === "reports" && reportData
               ? `${reportType.replace("-", " ")} report loaded for ${reportType === "daily-sales" ? format(selectedDate, "MMMM dd, yyyy") : format(dateRange.start, "MMM dd, yyyy") + " to " + format(dateRange.end, "MMM dd, yyyy")}`
-              : `Sales trend data: ${dashboardData.analytics.salesTrend?.length || 0} periods available`
-            }
+              : `Sales trend data: ${dashboardData.analytics.salesTrend?.length || 0} periods available`}
           </p>
         </motion.div>
       </main>
     </div>
-  );
+  )
 }
