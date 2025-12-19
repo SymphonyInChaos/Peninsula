@@ -514,6 +514,12 @@ export const api = {
       const data = await apiCall(url);
       return data?.data || data;
     },
+    // In api.ts under reports or customers section
+getTopCustomers: async (limit = 5) => {
+  console.log(`🏆 Getting top ${limit} customers of the week...`);
+  const data = await apiCall(`${API_BASE_URL}/api/reports/customers/top-weekly?limit=${limit}`);
+  return data?.data || data;
+},
 
     getPaymentAnalytics: async (startDate?: string, endDate?: string) => {
       console.log("💰 Getting payment analytics...");

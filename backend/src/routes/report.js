@@ -375,6 +375,26 @@ router.get("/dashboard", authenticate, async (req, res, next) => {
   }
 });
 
+// GET /api/reports/customers/top-weekly
+router.get(
+  "/customers/top-weekly",
+  authorize(["admin", "manager"]), // Uncomment if using auth middleware
+  async (req, res, next) => {
+    try {
+      const limit = parseInt(req.query.limit) || 5;
+      const result = await ReportService.getTopCustomersOfWeek(limit);
+
+      res.json({
+        success: true,
+        message: "Top customers of the week generated",
+        data: result
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 // EXPORT REPORTS
 router.get(
   "/export/:type",

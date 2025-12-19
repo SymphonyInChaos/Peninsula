@@ -3778,4 +3778,74 @@ export class ReportService {
 
     return opportunities;
   }
+  static async getTopCustomersOfWeek(limit = 5) {
+    // 1. Get Date Range (Current Week)
+    const now = new Date();
+    const startOfWeek = new Date(now.setDate(now.getDate() - now.getDay())); // Sunday
+    startOfWeek.setHours(0, 0, 0, 0);
+    
+    const endOfWeek = new Date(now.setDate(now.getDate() + 6)); // Saturday
+    endOfWeek.setHours(23, 59, 59, 999);
+  
+    // 2. Fetch Orders with Items and Customer Details
+    const orders = await prisma.order.findMany({
+      where: {
+        createdAt: {
+          gte: startOfWeek,
+          lte: endOfWeek,
+        },
+        status: { not: "cancelled" } // Exclude cancelled orders
+      },
+      include: {
+        customer: true,
+        items: true,
+      },
+    });
+  
+    // 3. Aggregate Data (Group by Customer)
+    const customerStats = {};
+  
+    orders.forEach(order => {
+      // Skip anonymous orders (if any)
+      if (!order.customerId || !order.customer) return;
+  
+      const customerId = order.customerId;
+      
+      if (!customerStats[customerId]) {
+        customerStats[customerId] = {
+          id: customerId,
+          name: order.customer.name,
+          email: order.customer.email,
+          phone: order.customer.phone,
+          totalOrders: 0,
+          totalProductsPurchased: 0,
+          totalSpent: 0
+        };
+      }
+  
+      // Add order stats to customer
+      customerStats[customerId].totalOrders += 1;
+      customerStats[customerId].totalSpent += (order.total || 0);
+      
+      // Sum up quantities of all items in this order
+      const itemCount = order.items.reduce((sum, item) => sum + (item.qty || 0), 0);
+      customerStats[customerId].totalProductsPurchased += itemCount;
+    });
+  
+    // 4. Convert to Array and Sort
+    const topCustomers = Object.values(customerStats)
+      .sort((a, b) => b.totalProductsPurchased - a.totalProductsPurchased) // Sort by most products
+      // .sort((a, b) => b.totalSpent - a.totalSpent) // Optional: Sort by money spent instead
+      .slice(0, limit);
+  
+    return {
+      period: {
+        start: startOfWeek.toISOString().split('T')[0],
+        end: endOfWeek.toISOString().split('T')[0]
+      },
+      customers: topCustomers
+    };
+  }
 }
+
+// Add this to ReportService class
